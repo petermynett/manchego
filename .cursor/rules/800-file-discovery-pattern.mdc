@@ -1,0 +1,285 @@
+---
+description: Standard pattern for file discovery functions in data pipeline modules
+globs:
+  - "manchego/time/**/*.py"
+  - "manchego/receipts/**/*.py"
+  - "manchego/ledger/**/*.py"
+alwaysApply: false
+---
+
+# File Discovery Function Pattern
+
+Data pipeline modules that process files from directories should use a standardized file discovery function pattern.
+
+## When to Use
+
+Use this pattern when your module:
+- Processes files from a raw/input directory
+- Needs to find files matching a specific pattern
+- Performs batch operations on discovered files
+
+Examples: geofency, screentime, rescuetime, transaction processing, receipt processing
+
+## Standard Pattern
+
+```python
+def get_raw_{module}_files() -> list[Path]:
+    """
+    Find {module} files in raw directory.
+
+    Returns:
+        list[Path]: List of {module} files [sorted by name if order matters].
+
+    """
+    return list([sorted if needed]({MODULE}_RAW_DIR.glob("{pattern}")))
+```
+
+## Placement
+
+- Always place in a `# FILE DISCOVERY` section near the top of the module
+- Place after imports and logger setup, before core business logic
+- This makes it easy to find and signals that the module processes files
+
+## Implementation Checklist
+
+When adding a file discovery function:
+
+- [ ] Name it `get_raw_{module}_files()` for consistency
+- [ ] Place in `# FILE DISCOVERY` section
+- [ ] Return `list[Path]` (not strings, not generators)
+- [ ] Use `sorted()` if chronological processing matters
+- [ ] Use `.glob()` directly (preferred over `glob.glob()`)
+- [ ] Replace all inline glob/listdir calls with this function
+- [ ] Add standard test suite (see below)
+
+## When to Sort
+
+**Use `sorted()`** when:
+- Files represent time-series data (dates in filename)
+- Processing order affects results
+- You need deterministic/reproducible runs
+
+**Skip sorting** when:
+- Order doesn't matter (independent files)
+- Random processing order is acceptable
+
+## Examples
+
+❌ **Avoid - Inline glob calls scattered throughout:**
+```python
+def fetch_data(start_date, end_date):
+    files = glob.glob(str(RAW_DIR / "data_*.json"))
+    if not files:
+        return None
+    # ... process files
+
+def stage_data():
+    files = glob.glob(str(RAW_DIR / "data_*.json"))
+    for file in files:
+        # ... stage file
+
+def get_latest():
+    files = glob.glob(str(RAW_DIR / "data_*.json"))
+    return max(files, key=os.path.getctime)
+```
+
+**Problems:**
+- Pattern duplicated 3 times (DRY violation)
+- Hard to change pattern globally
+- Inconsistent (string paths vs Path objects)
+- No single place to document file naming conventions
+
+✅ **Prefer - Centralized discovery function:**
+```python
+# ============================================================================
+# FILE DISCOVERY
+# ============================================================================
+
+
+def get_raw_data_files() -> list[Path]:
+    """
+    Find data JSON files in raw directory.
+    
+    Files follow naming pattern: data_YYYY-MM-DD.json
+
+    Returns:
+        list[Path]: List of data JSON files sorted by date.
+
+    """
+    return list(sorted(RAW_DIR.glob("data_*.json")))
+
+
+# ============================================================================
+# CORE PROCESSING
+# ============================================================================
+
+
+def fetch_data(start_date, end_date):
+    files = get_raw_data_files()
+    if not files:
+        return None
+    # ... process files
+
+
+def stage_data():
+    files = get_raw_data_files()
+    for file in files:
+        # ... stage file
+
+
+def get_latest():
+    files = get_raw_data_files()
+    return files[-1] if files else None  # Already sorted
+```
+
+**Benefits:**
+- Single source of truth for file discovery
+- Easy to modify pattern in one place
+- Consistent Path objects throughout
+- Documents naming convention
+- Easy to test in isolation
+
+## Complete Examples
+
+### Example 1: Simple CSV Processing (No Sorting)
+
+```python
+from pathlib import Path
+from manchego.time.config import GEOFENCY_RAW_DIR
+
+
+# ============================================================================
+# FILE DISCOVERY
+# ============================================================================
+
+
+def get_raw_geofency_files() -> list[Path]:
+    """
+    Find Geofency CSV files in raw directory.
+
+    Returns:
+        list[Path]: List of Geofency CSV files.
+
+    """
+    return list(GEOFENCY_RAW_DIR.glob("*.csv"))
+```
+
+### Example 2: Time-Series Data (With Sorting)
+
+```python
+from pathlib import Path
+from manchego.time.config import SCREENTIME_RAW_DIR
+
+
+# ============================================================================
+# FILE DISCOVERY
+# ============================================================================
+
+
+def get_raw_screentime_files() -> list[Path]:
+    """
+    Find ScreenTime CSV files in raw directory.
+    
+    Files follow naming pattern: screentime_daily_YYYY-MM-DD.csv
+
+    Returns:
+        list[Path]: List of ScreenTime CSV files sorted by date.
+
+    """
+    return list(sorted(SCREENTIME_RAW_DIR.glob("screentime_daily_*.csv")))
+```
+
+### Example 3: Specific Pattern Match
+
+```python
+import glob
+from pathlib import Path
+from manchego.time.config import RESCUETIME_RAW_DIR
+
+
+# ============================================================================
+# FILE DISCOVERY
+# ============================================================================
+
+
+def get_raw_rescuetime_files() -> list[Path]:
+    """
+    Find RescueTime JSON files in raw directory.
+    
+    Files follow naming pattern: macbook_YYYY-MM-DD_YYYY-MM-DD.json
+
+    Returns:
+        list[Path]: List of RescueTime JSON files.
+
+    """
+    files = glob.glob(str(RESCUETIME_RAW_DIR / "macbook_*_*.json"))
+    return [Path(f) for f in files]
+```
+
+## Standard Test Suite
+
+Every file discovery function should have these 4 tests:
+
+```python
+class TestGetRaw{Module}Files:
+    """Test file discovery functionality."""
+
+    def test_empty_directory(self):
+        """Returns empty list when no files exist."""
+        result = module.get_raw_{module}_files()
+        assert result == []
+
+    def test_with_files(self):
+        """Returns matching files."""
+        # Create test files
+        file1 = RAW_DIR / "test_2024-01-15.csv"
+        file2 = RAW_DIR / "test_2024-01-16.csv"
+        file1.write_text("data")
+        file2.write_text("data")
+        
+        result = module.get_raw_{module}_files()
+        
+        assert len(result) == 2
+        assert file1 in result
+        assert file2 in result
+
+    def test_filters_non_matching(self):
+        """Filters out non-matching files."""
+        csv_file = RAW_DIR / "test.csv"
+        txt_file = RAW_DIR / "readme.txt"
+        csv_file.write_text("data")
+        txt_file.write_text("text")
+        
+        result = module.get_raw_{module}_files()
+        
+        assert len(result) == 1
+        assert result[0] == csv_file
+
+    def test_returns_path_objects(self):
+        """Returns Path objects, not strings."""
+        file = RAW_DIR / "test.csv"
+        file.write_text("data")
+        
+        result = module.get_raw_{module}_files()
+        
+        assert len(result) == 1
+        assert isinstance(result[0], Path)
+```
+
+## Quick Decision Tree
+
+```
+Does your module process files from a directory?
+├─ Yes → Use this pattern
+│  ├─ Does processing order matter?
+│  │  ├─ Yes → Use sorted()
+│  │  └─ No → Skip sorting
+│  └─ Pattern: get_raw_{module}_files() -> list[Path]
+└─ No → This pattern doesn't apply
+```
+
+## Related Rules
+
+- **Rule 602**: Module Logging Patterns (use operation_id in file processing)
+- **Rule 605**: Business Return Structures (return dicts from batch operations)
+- **Rule 706**: Autouse Directory Isolation (redirect dirs in tests)

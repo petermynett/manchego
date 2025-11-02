@@ -1,0 +1,230 @@
+---
+description: Testing conventions for pytest-based tests in manchego
+globs:
+  - "tests/**/*.py"
+alwaysApply: false
+---
+
+# Testing Standards
+
+## Test Structure and Location
+
+- Mirror package structure: `tests/<module>/test_<file>.py` (e.g., `tests/receipts/test_intake.py`)
+- CLI tests: `tests/cli/test_main.py` (coordination), `tests/cli/test_[domain].py` (command parsing)
+- Import modules explicitly: `import manchego.receipts.intake as intake`
+- Add 1-2 line header comment describing the test file's scope
+- Target public functions/classes only; test private helpers indirectly
+
+## Isolation Requirements
+
+- Use `tmp_path` for ALL file I/O; never touch project data directories
+- Pass `root=` explicitly to discovery functions to avoid relying on globals
+- No real network calls; use `mocker`, `fake_sheets`, `fake_openai_factory`
+- No writes outside `tmp_path`; no paid API calls during tests
+- **See rule 705** for path redirection checklist (input AND output directories)
+
+## Standard Fixtures (from tests/conftest.py)
+
+- `touch(p: Path, content: bytes = b"test") -> Path`: create file at any path
+- `make_files(names: list[str]) -> list[Path]`: bulk-create files under `tmp_path`
+- `receipts_test_config`: redirect receipt directories to `tmp_path`
+- `fake_sheets`: in-memory Google Sheets double with `.append()`, `.get_values()`
+- `fake_openai_factory`: returns configurable OpenAI API fake
+
+Always pass fixtures as function arguments; never import them directly.
+
+## Naming Conventions
+
+- Test functions: `test_<behavior>__<condition>` (double underscore separates behavior from condition)
+- Use `pytest.mark.parametrize` with descriptive `ids=[...]` to reduce duplication
+- Keep tests small, deterministic, one behavior per test
+
+## Common Assertions
+
+- **Timestamps**: Check `"T" in iso` and `iso.endswith("+00:00")` for UTC, not hard-coded `Z`
+- **MIME detection**: Use `.unknownext` for true fallback; expect `application/octet-stream`
+- **Ordering**: When behavior specifies case-insensitive sort, assert on `name.lower()`
+- **Hash stability**: Same bytes → same SHA256; different bytes → different hash
+- **Print checks**: Use `capsys` to capture stdout; assert key substrings (status, filename, size, sha256)
+
+## Examples
+
+❌ **Avoid:**
+```python
+# Hardcoded path to real data
+def test_discover():
+    paths = intake.discover_receipt_paths()  # uses global config
+    assert len(paths) > 0
+
+# No isolation
+def test_process():
+    result = process_receipt("data/raw/receipts/test.jpg")  # touches real files
+```
+
+✅ **Prefer:**
+```python
+# Isolated with tmp_path and explicit root
+def test_discover_filters_hidden_files(tmp_path, touch):
+    touch(tmp_path / "visible.jpg")
+    touch(tmp_path / ".hidden.jpg")
+    paths = intake.discover_receipt_paths(root=tmp_path)
+    assert len(paths) == 1
+    assert paths[0].name == "visible.jpg"
+
+# Mocked external dependencies
+def test_parse_handles_api_error(tmp_path, touch, mocker):
+    img = touch(tmp_path / "rcpt.jpg", b"fake-image")
+    mocker.patch("manchego.receipts.parse_gpt.OpenAI", side_effect=Exception("API down"))
+    result = parse_gpt.parse_receipt(img)
+    assert result.status == "error"
+```
+
+## Complete Test File Template
+
+```python
+# tests/<module>/test_<file>.py
+# Tests <brief description of module functionality>.
+
+import pytest
+
+import manchego.<module>.<file> as target_module
+
+
+@pytest.fixture(autouse=True)
+def _redirect_module_dirs(tmp_path, monkeypatch):
+    """
+    Redirect all module directories to tmp_path to prevent touching real data.
+    
+    Redirects:
+    - MODULE_RAW_DIR (input)
+    - MODULE_STAGED_DIR (output)
+    """
+    from manchego import global_config
+    
+    raw_dir = tmp_path / "module" / "raw"
+    staged_dir = tmp_path / "module" / "staged"
+    
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    staged_dir.mkdir(parents=True, exist_ok=True)
+    
+    monkeypatch.setattr(global_config, "MODULE_RAW_DIR", raw_dir)
+    monkeypatch.setattr(target_module, "MODULE_STAGED_DIR", staged_dir)
+    
+    return {"raw": raw_dir, "staged": staged_dir}
+
+
+def test_behavior__condition(tmp_path, touch):
+    """Test specific behavior under specific condition."""
+    # Arrange
+    f = touch(tmp_path / "sample.txt", b"data")
+    
+    # Act
+    result = target_module.function(f, root=tmp_path)
+    
+    # Assert
+    assert result.expected_attribute == expected_value
+
+
+@pytest.mark.parametrize("filename", ["A.jpg", "b.jpg"], ids=["uppercase", "lowercase"])
+def test_sorting_is_case_insensitive(tmp_path, touch, filename):
+    """Verify case-insensitive sorting."""
+    touch(tmp_path / filename)
+    paths = target_module.discover(root=tmp_path)
+    assert [p.name.lower() for p in paths] == sorted([p.name.lower() for p in paths])
+```
+
+**See Rule 706 for complete autouse fixture patterns with real examples.**
+
+## Verification
+
+After writing tests, ensure:
+- No imports from real data directories or config globals
+- All file operations use `tmp_path`
+- **All directory constants redirected** (see Rule 705 checklist, Rule 706 for autouse pattern)
+- External services (Google, OpenAI) are mocked with provided fixtures
+- Tests pass `ruff check tests -q --select I --fix` (import sorting)
+- Run test, check `git status data/` shows no changes (no test artifacts leaked)
+
+## When NOT to Use This Decision Tree
+
+Skip the decision tree when:
+- Test already exists (type is obvious from location)
+- Fixing existing test (see Rule 708 for migration patterns)
+- Converting test between types (rare - usually not needed)
+
+**The decision tree is for writing NEW tests, not fixing EXISTING tests.**
+
+## See Also
+
+This rule provides the foundation for all testing. For specific patterns:
+- Rule 701: CLI Testing Patterns - testing CLI commands
+- Rule 702: Test Isolation - when to mock what
+- Rule 703: Test Fixture Usage - fixture requirements
+- Rule 704: CLI Mocking Consistency - where to mock imports
+- Rule 705: Test Data Isolation - path redirection
+- Rule 706: Autouse Directory Isolation - automatic isolation
+- Rule 707: Mocking Logs in Tests - log mocking patterns
+- Rule 708: Test Migration Patterns - updating tests after refactors
+
+## Test Type Decision Tree (For NEW Tests)
+
+**Note**: This decision tree is for **writing new tests**. If test already exists, the type is obvious from its location and context. See **Rule 708** for updating existing tests.
+
+When writing a new test from scratch, choose the appropriate type:
+
+```
+What are you testing?
+├─ Core algorithm or data transformation?
+│  └─ YES → Business Logic Test
+│           Location: tests/<domain>/test_<module>.py
+│           Isolation: Complete (tmp_path, autouse fixtures, mock all external)
+│           Coverage: Comprehensive (edge cases, errors, variations)
+│           Stability: Highest (least likely to change)
+│           
+├─ CLI command behavior (args, output, errors)?
+│  └─ YES → CLI Domain Test
+│           Location: tests/cli/test_<domain>.py
+│           Isolation: Partial (mock business logic, test CLI interface)
+│           Coverage: Command parsing, user output, error handling
+│           Stability: Medium (CLI signatures may change)
+│           See: Rule 701 for patterns
+│           
+└─ Command registration and wiring?
+   └─ YES → CLI Integration Test
+            Location: tests/cli/test_main.py
+            Isolation: Minimal (mock entire apps)
+            Coverage: Light (verify commands exist, parse correctly)
+            Stability: Lowest (structure changes frequently)
+```
+
+## Test Levels Explained
+
+### Business Logic Tests (Highest Priority)
+- **What**: Core algorithms, data transformations, file operations, API integrations
+- **Isolation**: Complete - use `tmp_path`, autouse fixtures (Rule 706), mock all external services
+- **Coverage**: Comprehensive - test edge cases, errors, boundary conditions, data variations
+- **Why prioritize**: Business logic is stable; changes least frequently; most valuable to protect
+- **Example**: `tests/receipts/test_preprocess.py` tests image conversion, not CLI command
+
+### CLI Domain Tests (Medium Priority)
+- **What**: Command argument parsing, user output formatting, CLI error handling
+- **Isolation**: Partial - mock business logic functions, test CLI interface only
+- **Coverage**: Command interface - verify args parsed correctly, output formatted, errors caught
+- **Why less priority**: CLI signatures may change as UX evolves; less critical than business logic
+- **Example**: `tests/cli/test_receipts.py` tests `receipts:process` command parsing (see Rule 701)
+
+### CLI Integration Tests (Lowest Priority)
+- **What**: Command registration, subcommand availability, help text
+- **Isolation**: Minimal - mock entire app modules, verify wiring only
+- **Coverage**: Light - smoke tests that commands exist and are accessible
+- **Why lowest**: Structure changes frequently; easy to fix manually; low risk if broken
+- **Example**: `tests/cli/test_main.py` tests that `app.add_typer(receipts_app, name="receipts")` works
+
+## Testing Philosophy
+
+**Invest testing effort where it provides most value:**
+1. **Business Logic**: Comprehensive coverage (most stable, most valuable)
+2. **CLI Interface**: Focused coverage (moderate stability, user-facing)
+3. **Integration**: Light coverage (least stable, easy to verify manually)
+
+**See Rule 701 for CLI testing patterns, Rule 706 for autouse isolation fixtures.**

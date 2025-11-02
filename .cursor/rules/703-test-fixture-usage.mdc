@@ -1,0 +1,51 @@
+---
+description: Mandatory test fixture usage patterns to ensure proper isolation
+globs:
+  - ["tests/**/*.py"]
+alwaysApply: false
+---
+
+# Test Fixture Usage Requirements
+
+## Mandatory Fixture Patterns
+
+- **Binary file creation**: Always use `touch()` fixture for binary test files
+- **Structured text files**: For CSV, JSON, or other text files where content structure matters, `.write_text()` is acceptable for clarity
+- **tmp_path usage**: Only include `tmp_path` parameter if you create files OR use fixtures that require it
+- **Fixture consistency**: Use provided fixtures (`touch`, `make_files`, `fake_sheets`) instead of manual alternatives
+
+## Examples
+
+❌ **Avoid:**
+```python
+def test_file_processing(tmp_path):  # tmp_path unused
+    result = process_data()
+    assert result.success
+
+def test_with_binary_file(tmp_path):
+    file = tmp_path / "test.jpg"
+    file.write_bytes(b"data")  # Manual binary file creation - use touch() instead
+```
+
+✅ **Prefer:**
+```python
+def test_file_processing():  # No tmp_path needed
+    result = process_data()
+    assert result.success
+
+def test_with_binary_file(tmp_path, touch):
+    file = touch(tmp_path / "test.jpg", b"data")  # Use touch fixture
+
+def test_with_structured_text(tmp_path):
+    # For CSV/JSON, .write_text() is acceptable for clarity
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text("col1,col2\nval1,val2")  # OK - structure is explicit
+    result = process_csv(csv_file)
+    assert result.rows == 1
+```
+
+## Enforcement
+
+- Remove unused `tmp_path` parameters from test functions
+- Replace all manual file creation with `touch()` fixture
+- Use `make_files()` for bulk file creation scenarios

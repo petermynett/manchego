@@ -1,0 +1,71 @@
+---
+description: Clear separation of responsibilities between CLI and module-level functions for logging and output
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Module Responsibilities
+
+- **CLI functions**: Handle user communication, show summaries, catch and format exceptions (see rule 620)
+- **Module functions**: Focus on business logic, return structured data, log operational details (see rule 602)
+- **Never mix**: Don't print to console in modules, don't do business logic in CLI
+- CLI decides what users see, modules decide what gets logged
+- Return structured results from modules, format display in CLI (see rule 605 for return structure)
+- Use consistent patterns: CLI orchestrates, modules execute and log
+
+## Examples
+
+❌ **Avoid:**
+```python
+def preprocess_all():
+    # business logic
+    print(f"Processing complete: {created} created")  # CLI concern in module
+    return stats
+
+def cli_preprocess():
+    stats = preprocess_all()
+    typer.echo(f"Done: {stats}")  # No formatting or user-friendly display
+```
+
+✅ **Prefer:**
+```python
+def preprocess_all(operation_id: str | None = None):
+    # business logic
+    if operation_id is None:
+        operation_id = generate_operation_id("preprocess_receipts")
+    
+    log_operation_summary(logger, "preprocess_receipts", operation_id, stats)
+    return stats  # Return structured data
+
+def cli_preprocess():
+    try:
+        typer.echo("🔄 Starting preprocessing...")  # User communication
+        stats = preprocess_all()
+        # Format and display user-friendly summary
+        if stats['created'] > 0:
+            typer.echo(f"✅ Created {stats['created']} processed receipts")
+    except Exception as e:
+        typer.echo(f"❌ Failed: {e}", err=True)  # User-friendly error
+        raise typer.Exit(1)
+```
+
+❌ **Avoid:**
+```python
+def parse_receipt(path):
+    try:
+        # parsing logic
+    except Exception as e:
+        typer.echo(f"Error parsing {path}: {e}")  # CLI concern in module
+        raise
+```
+
+✅ **Prefer:**
+```python
+def parse_receipt(path, operation_id):
+    try:
+        # parsing logic
+    except Exception as e:
+        log_file_failure(logger, path.name, operation_id, e)  # Log in module
+        raise  # Let CLI handle user communication
+```

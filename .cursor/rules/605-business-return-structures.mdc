@@ -1,0 +1,200 @@
+---
+description: Standardized return structures for business functions to enable consistent CLI formatting
+globs:
+  - "manchego/**/*.py"
+  - "!manchego/cli/**"
+  - "!tests/**"
+alwaysApply: false
+---
+
+# Business Function Return Structures
+
+**Note**: This rule defines what functions RETURN (dict with success/total/succeeded/failed). For the structure of JSON log entries, see **Rule 611: Log Entry Schema**.
+
+- All business functions called by CLI MUST return consistent dict structures
+- Use standard keys: `success`, `total`, `succeeded`, `failed`, `skipped`, `elapsed_s`, `failures`
+- Return dicts (not int, str, None, or bool) for operations that process multiple items
+- Simple operations may return primitives, but dict is preferred for consistency
+- Include enough information for CLI to show meaningful summaries
+
+## Standard Return Structure
+
+**For batch operations (preferred pattern)**:
+
+```python
+{
+    "success": bool,           # Overall success (all items succeeded)
+    "total": int,              # Total items processed
+    "succeeded": int,          # Successfully processed items
+    "failed": int,             # Failed items
+    "skipped": int,            # Skipped items (optional)
+    "elapsed_s": float,        # Time taken (optional)
+    "failures": [              # Details of failures (optional)
+        {"item": str, "reason": str}
+    ]
+}
+```
+
+**For single operations**:
+
+```python
+{
+    "success": bool,
+    "item": str,               # What was processed
+    "result": Any,             # Operation result (optional)
+    "error": str               # Error message if success=False (optional)
+}
+```
+
+## Examples
+
+❌ **Avoid - Inconsistent return types:**
+```python
+def stage_receipts() -> int:
+    """Returns count of staged items."""
+    # CLI can't distinguish success from failure
+    return 47
+
+def process_file(path: Path) -> bool:
+    """Returns True on success."""
+    # No details about what happened
+    return True
+
+def fetch_data() -> None:
+    """Returns None on success, raises on failure."""
+    # CLI can't show any summary
+    return None
+
+def parse_receipt(path: Path) -> str:
+    """Returns message."""
+    # CLI has to parse strings (fragile)
+    return "Processed 3 items, 1 failed"
+```
+
+✅ **Prefer - Consistent dict structures:**
+```python
+def stage_receipts(limit: int = None) -> dict:
+    """
+    Stage processed receipts to Google Sheets.
+    
+    Returns:
+        dict: Operation results with counts and timing
+    """
+    results = {"succeeded": [], "failed": []}
+    start = time.time()
+    
+    for receipt in get_receipts(limit):
+        try:
+            stage_single_receipt(receipt)
+            results["succeeded"].append(receipt.name)
+        except Exception as e:
+            results["failed"].append({"item": receipt.name, "reason": str(e)})
+    
+    return {
+        "success": len(results["failed"]) == 0,
+        "total": len(results["succeeded"]) + len(results["failed"]),
+        "succeeded": len(results["succeeded"]),
+        "failed": len(results["failed"]),
+        "elapsed_s": time.time() - start,
+        "failures": results["failed"] if results["failed"] else []
+    }
+
+def process_file(path: Path) -> dict:
+    """
+    Process single file with detailed result.
+    
+    Returns:
+        dict: Success status and details
+    """
+    try:
+        result = expensive_operation(path)
+        return {
+            "success": True,
+            "item": path.name,
+            "result": result
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "item": path.name,
+            "error": str(e)
+        }
+
+def fetch_data(start: str, end: str) -> dict:
+    """
+    Fetch data from external API.
+    
+    Returns:
+        dict: Success status, item count, and timing
+    """
+    start_time = time.time()
+    try:
+        data = api_call(start, end)
+        return {
+            "success": True,
+            "total": len(data),
+            "succeeded": len(data),
+            "failed": 0,
+            "elapsed_s": time.time() - start_time
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "total": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "error": str(e),
+            "elapsed_s": time.time() - start_time
+        }
+```
+
+## Migration Strategy
+
+**For existing functions returning primitives:**
+
+```python
+# OLD (returns int)
+def stage_all() -> int:
+    count = 0
+    for item in items:
+        stage(item)
+        count += 1
+    return count
+
+# NEW (returns dict)
+def stage_all() -> dict:
+    succeeded = 0
+    failed = 0
+    failures = []
+    
+    for item in items:
+        try:
+            stage(item)
+            succeeded += 1
+        except Exception as e:
+            failed += 1
+            failures.append({"item": item.name, "reason": str(e)})
+    
+    return {
+        "success": failed == 0,
+        "total": succeeded + failed,
+        "succeeded": succeeded,
+        "failed": failed,
+        "failures": failures
+    }
+```
+
+## Key Principles
+
+- **Consistent structure** enables consistent CLI formatting
+- **Include failure details** so CLI can show helpful messages
+- **Track timing** for performance monitoring (optional but useful)
+- **Distinguish skipped vs failed** when applicable
+- **Return dicts** even for single operations (easier to extend later)
+
+## Backward Compatibility
+
+If changing existing functions would break too much code:
+- Add new `_v2()` version with dict return
+- Migrate CLI to use new version
+- Deprecate old version gradually

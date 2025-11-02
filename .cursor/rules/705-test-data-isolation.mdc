@@ -1,0 +1,84 @@
+---
+description: Data isolation patterns to prevent tests from affecting real data or each other
+globs:
+  - ["tests/**/*.py"]
+alwaysApply: false
+---
+
+# Test Data Isolation
+
+## Input Data Patterns
+
+- **Copy fixture inputs**: Never mutate original test fixtures
+- **Golden file testing**: Compare outputs against expected fixtures in `tests/fixtures/expected/`
+- **Deep copy**: Use `.copy(deep=True)` or `deepcopy()` for mutable inputs
+
+## Path Redirection (Critical)
+
+- **Redirect ALL directories**: Functions often read from one directory and write to another
+- **Identify data flows**: Check where function reads FROM and writes TO
+- **Common mistake**: Redirecting input paths but forgetting output paths
+- **Use monkeypatch**: Redirect all `*_DIR` constants to subdirectories under `tmp_path`
+
+## Verification Checklist
+
+Before completing a test that touches files:
+- [ ] Identified ALL directories the function reads from
+- [ ] Identified ALL directories the function writes to  
+- [ ] Redirected ALL directory constants to `tmp_path` subdirectories
+- [ ] Mocked OR redirected any file-moving operations
+- [ ] Verified real data directories unchanged after test runs
+
+## Examples
+
+❌ **Avoid - Partial Isolation:**
+```python
+def test_stage_all_files(tmp_path, monkeypatch):
+    # Only redirecting INPUT directory
+    monkeypatch.setattr(module, "RAW_DIR", tmp_path)
+    # Missing: monkeypatch.setattr(module, "STAGED_DIR", ...)
+    
+    result = module.stage_all_files()  # Writes to REAL staged directory!
+```
+
+✅ **Prefer - Complete Isolation:**
+```python
+def test_stage_all_files(tmp_path, monkeypatch):
+    # Redirect BOTH input and output directories
+    monkeypatch.setattr(module, "RAW_DIR", tmp_path / "raw")
+    monkeypatch.setattr(module, "STAGED_DIR", tmp_path / "staged")
+    
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "test.csv").write_text("data")
+    
+    result = module.stage_all_files()
+    assert (tmp_path / "staged" / "test.csv").exists()  # File moved within tmp_path
+```
+
+❌ **Avoid - Hard-coded paths:**
+```python
+result = runner.invoke(app, ["command", "--file", "/real/data/path"])
+```
+
+✅ **Prefer - Parameterized paths:**
+```python
+test_file = tmp_path / "input.csv"
+test_file.write_text("data")
+result = runner.invoke(app, ["command", "--file", str(test_file)])
+```
+
+## Enforcement
+
+- All file paths in tests must be relative to `tmp_path`
+- Fixture inputs must be copied before modification
+- Run test, then check `git status data/` shows no changes
+
+## Required Reading
+
+- **Rule 700**: Testing Standards - foundation for all testing
+
+## See Also
+
+- Rule 706: Autouse Directory Isolation - automatic implementation using autouse fixtures
+- Rule 702: Test Isolation and Mocking - mocking strategies for isolation
+- Rule 703: Test Fixture Usage - fixture requirements and patterns

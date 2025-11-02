@@ -1,0 +1,213 @@
+---
+description: Operation ID generation and propagation for tracing all logs related to a single operation
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Operation ID Tracing
+
+Every operation (CLI command, batch process, scheduled task) should generate a unique operation ID that appears in all related log entries. This enables complete tracing of an operation from start to finish.
+
+## Operation ID Format
+
+```
+{operation_name}_{YYYYMMDD}_{HHMMSS}_{short_uuid}
+```
+
+**Examples:**
+- `receipts_stage_20251011_182001_a3d5e8f4`
+- `transactions_import_20251011_143022_b7f3d9e1`
+- `sync_all_20251011_090000_c8e4a0f2`
+
+**Components:**
+- `operation_name`: Human-readable operation identifier (snake_case)
+- `YYYYMMDD`: Date stamp for quick identification
+- `HHMMSS`: Time stamp for uniqueness
+- `short_uuid`: First 8 chars of UUID4 for guaranteed uniqueness
+
+## Generation
+
+Use the helper function:
+
+```python
+from manchego.utils.logging_helpers import generate_operation_id
+
+operation_id = generate_operation_id("stage_receipts")
+# Returns: "stage_receipts_20251011_182001_a3d5e8f4"
+```
+
+## When to Generate vs When to Pass
+
+### Generate at Entry Points
+
+Generate operation_id at the **entry point** of an operation:
+
+✅ **Always generate at:**
+- **CLI command entry** (`@app.command()` functions) - ALWAYS new
+- **Scheduled task entry points** - ALWAYS new
+- **API endpoint handlers** (future) - ALWAYS new
+- **Top-level operations when called directly** - Auto-generate if None
+
+❌ **Never generate at:**
+- Helper functions (they must receive operation_id)
+- Nested operations (reuse parent's operation_id)
+- Library/utility functions (receive operation_id)
+
+### Pattern: CLI Commands (Always Generate)
+
+CLI commands ALWAYS generate a new operation_id:
+
+```python
+@app.command("stage")
+def stage_cmd():
+    # ALWAYS generate - this is the entry point
+    operation_id = generate_operation_id("receipts_stage")
+    result = stage_receipts(operation_id=operation_id)  # Pass it down
+```
+
+### Pattern: Business Functions (Accept + Auto-Generate)
+
+Business functions accept operation_id but auto-generate if None:
+
+```python
+def stage_receipts(operation_id: str | None = None):
+    # Auto-generate if called directly (not from CLI)
+    if operation_id is None:
+        operation_id = generate_operation_id("stage_receipts")
+    
+    # Now use operation_id in all logs and pass to helpers
+    log_operation_start(logger, "stage_receipts", operation_id)
+    
+    for file in files:
+        process_file(file, operation_id)  # Pass it down
+```
+
+### Pattern: Helper Functions (Always Receive)
+
+Helper functions ALWAYS receive operation_id (never generate):
+
+```python
+def process_file(file: Path, operation_id: str):
+    # Never generate - always receive from caller
+    logger.info("Processing file", extra={
+        "operation_id": operation_id,
+        "data": {"file": file.name}
+    })
+```
+
+### Decision Tree
+
+```
+Is this a CLI command?
+├─ YES → ALWAYS generate new operation_id
+└─ NO → Is this a top-level business function?
+    ├─ YES → Accept operation_id parameter (optional)
+    │        └─ Auto-generate if None
+    └─ NO → Is this a helper/utility function?
+        └─ YES → Receive operation_id (required parameter)
+                 └─ NEVER generate
+```
+
+## Propagation Pattern
+
+Pass operation_id down the call stack:
+
+```python
+# CLI entry point - generate here
+@app.command("stage")
+def stage_cmd():
+    operation_id = generate_operation_id("receipts_stage")
+    result = stage_receipts_to_sheet(operation_id=operation_id)
+
+# Business function - receive and use
+def stage_receipts_to_sheet(operation_id: str | None = None) -> dict:
+    if operation_id is None:
+        operation_id = generate_operation_id("stage_receipts")
+    
+    log_operation_start(logger, "stage_receipts", operation_id)
+    
+    for file in files:
+        stage_single_receipt(file, operation_id)
+
+# Helper function - receive and use
+def stage_single_receipt(file: Path, operation_id: str):
+    logger.info("Staging receipt", extra={
+        "operation_id": operation_id,
+        "data": {"file": file.name}
+    })
+```
+
+## Optional Parameter Pattern
+
+Make operation_id optional with auto-generation fallback:
+
+```python
+def stage_receipts_to_sheet(
+    limit: int | None = None,
+    operation_id: str | None = None
+) -> dict:
+    """Stage receipts to Google Sheets.
+    
+    Args:
+        limit: Maximum number of receipts to stage
+        operation_id: Operation ID for log tracing (auto-generated if None)
+    """
+    if operation_id is None:
+        operation_id = generate_operation_id("stage_receipts")
+    
+    # Use operation_id in all logs
+```
+
+This allows:
+- CLI commands to pass operation_id (for full tracing)
+- Direct function calls to work without operation_id (auto-generated)
+
+## Including in Logs
+
+All log entries should include operation_id in the `extra` parameter:
+
+```python
+logger.info("Operation started", extra={
+    "operation_id": operation_id,
+    "data": {"limit": 50}
+})
+
+logger.error("Operation failed", extra={
+    "operation_id": operation_id,
+    "error": {"type": "ValueError", "message": "Invalid input"}
+})
+```
+
+The JSON formatter will extract operation_id to a top-level field:
+
+```json
+{
+  "timestamp": "2025-10-11T18:20:01.234Z",
+  "level": "INFO",
+  "module": "manchego.receipts.stage",
+  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",
+  "message": "Operation started",
+  "data": {"limit": 50}
+}
+```
+
+## Querying by Operation ID
+
+Machine-readable logs enable easy querying:
+
+```bash
+# Get all logs for a specific operation
+jq 'select(.operation_id == "receipts_stage_20251011_182001_a3d5e8f4")' data/logs/receipts/*.log
+
+# Show timeline of an operation
+jq -r 'select(.operation_id == "receipts_stage_20251011_182001_a3d5e8f4") | "\(.timestamp) [\(.level)] \(.message)"' data/logs/**/*.log | sort
+```
+
+## Benefits
+
+- **Complete tracing**: Follow a single operation across all modules and log files
+- **Debugging**: Isolate logs for a specific command or batch process
+- **Correlation**: Link CLI commands to module operations
+- **Performance**: Measure end-to-end operation duration
+- **Parallel operations**: Distinguish between concurrent operations

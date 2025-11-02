@@ -1,0 +1,121 @@
+---
+description: Clear guidelines for when to use DEBUG, INFO, WARNING, and ERROR log levels
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Log Level Guidelines
+
+Use consistent log levels across all modules for predictable debugging and monitoring.
+
+## INFO Level
+
+Use for operation milestones and successful file processing:
+
+- Operation start: "Starting receipt staging"
+- Per-file success (brief, one line): "Staged receipt_001.jpg (12 rows)"
+- Operation summary: "Staging complete: 44 succeeded, 0 failed, 2.3s"
+- Important state changes: "Moved file to staged directory"
+
+✅ **Use INFO for:**
+- Operation lifecycle events (start, complete)
+- Each successful file/item processed
+- Summary statistics
+- State transitions
+
+❌ **Don't use INFO for:**
+- Debug details (use DEBUG)
+- Function entry/exit (use DEBUG)
+- Skipped files (use WARNING)
+
+## WARNING Level
+
+Use for any issue that doesn't stop processing but needs attention:
+
+- Skipped files: "Skipped duplicate file: receipt_001.jpg"
+- Rate limiting: "API rate limit: 90% used"
+- Missing optional config: "No API key found, using defaults"
+- Recoverable errors: "Failed to process file, continuing with next"
+- Data quality issues: "Missing required field, using default"
+
+✅ **Use WARNING for:**
+- Duplicates and skipped items
+- Approaching limits
+- Recoverable errors
+- Data quality issues
+- Missing optional configuration
+
+## ERROR Level
+
+Use for failures at any level:
+
+- Individual file failures: "Failed to process receipt_001.jpg: Invalid format"
+- Operation failures: "Staging failed: No files found"
+- Fatal issues: "Database connection failed"
+- API errors: "Google Sheets API returned 403"
+- Configuration errors: "Required API key missing"
+
+✅ **Use ERROR for:**
+- Any file processing failure
+- Operation-level failures
+- Fatal system issues
+- API/external service errors
+- Configuration problems
+
+## DEBUG Level
+
+Use for detailed information needed during development/debugging:
+
+- Computed values: "Generated hash: a3d5e8f..."
+- Data transformations: "Converted 50 rows, dropped 3 invalid"
+- Decision points: "Skipping file: already processed (hash match)"
+- API request/response: "API call: POST /sheets, status: 200, rows: 44"
+- Function parameters: "Processing file: size=1.2MB, format=JPEG"
+
+✅ **Use DEBUG for:**
+- Computed hashes, IDs, metadata
+- Data transformation details
+- Why decisions were made
+- API request/response summaries
+- Input parameters and intermediate values
+
+❌ **Don't use DEBUG for:**
+- Every function entry/exit (too noisy)
+- Obvious flow control
+- Success messages (use INFO)
+
+## Examples
+
+```python
+# Operation start
+logger.info("Starting receipt preprocessing", extra={
+    "operation_id": operation_id,
+    "data": {"limit": 50, "recurse": True}
+})
+
+# Per-file success
+logger.info("Processed receipt", extra={
+    "operation_id": operation_id,
+    "data": {"file": "receipt_001.jpg", "hash": "a3d5e8f...", "size_bytes": 123456}
+})
+
+# Warning for skipped file
+logger.warning("Skipped duplicate file", extra={
+    "operation_id": operation_id,
+    "data": {"file": "receipt_002.jpg", "reason": "hash_match", "existing_hash": "b4e6f9d..."}
+})
+
+# Error for failure
+logger.error("Failed to process receipt", extra={
+    "operation_id": operation_id,
+    "data": {"file": "receipt_003.jpg"},
+    "error": {"type": "PIL.UnidentifiedImageError", "message": "cannot identify image file"}
+})
+
+# Debug for computed values
+logger.debug("Generated receipt ID", extra={
+    "operation_id": operation_id,
+    "data": {"file": "receipt_001.jpg", "receipt_id": "550e8400-...", "sha256": "a3d5e8f..."}
+})
+```

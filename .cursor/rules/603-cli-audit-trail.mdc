@@ -1,0 +1,139 @@
+---
+description: Audit logging for all CLI command invocations with arguments and results in JSON format
+globs:
+  - "manchego/cli/**/*.py"
+alwaysApply: false
+---
+
+# CLI Audit Trail
+
+All CLI command invocations should be logged to `data/logs/cli/commands.log` for debugging and monitoring. This creates an audit trail that connects user actions to module operations.
+
+## Complete CLI Command Pattern
+
+Every CLI command should follow this pattern (see Rule 612 for full template):
+
+```python
+import time
+from typing import Annotated
+
+import typer
+
+from manchego.cli.base import format_result
+from manchego.utils.cli_audit import log_command_end, log_command_start
+from manchego.utils.logging_helpers import generate_operation_id
+
+@app.command("stage")
+def stage_cmd(
+    limit: Annotated[int | None, typer.Option(help="Limit number of items")] = None,
+    dry_run: Annotated[bool, typer.Option(help="Preview without executing")] = False,
+):
+    """Stage receipts to Google Sheets."""
+    # 1. Generate operation_id and start timing
+    operation_id = generate_operation_id("receipts_stage")
+    t0 = time.time()
+    
+    # 2. Log command start (audit trail)
+    log_command_start("receipts:stage", {"limit": limit, "dry_run": dry_run}, operation_id)
+    
+    # 3. User-friendly console output
+    typer.echo("🔄 Staging receipts...")
+    
+    try:
+        # 4. Call business function with operation_id
+        result = stage_receipts_to_sheet(limit=limit, dry_run=dry_run, operation_id=operation_id)
+        
+        # 5. Log command end (success)
+        log_command_end("receipts:stage", operation_id, result, time.time() - t0)
+        
+        # 6. Format and display result
+        format_result(result, "Receipt staging")
+        
+    except Exception as e:
+        # 7. Log command end (failure)
+        log_command_end("receipts:stage", operation_id, {
+            "success": False,
+            "error": str(e)
+        }, time.time() - t0)
+        
+        # 8. User-friendly error message
+        typer.echo(f"❌ Receipt staging failed: {e}", err=True)
+        raise typer.Exit(1) from e
+```
+
+**Key Points:**
+- Generate `operation_id` at top (CLI is always entry point)
+- Initialize `t0 = time.time()` for duration tracking
+- Log start before operation, log end after (success or failure)
+- Pass `operation_id` to business functions
+- Console output separate from audit logging
+- Always log end, even on error
+
+For complete CLI command patterns with more examples, see **Rule 612: CLI Command Pattern**.
+
+## CLI Audit Log Format
+
+Logs to `data/logs/cli/commands.log` in JSON format:
+
+```json
+{
+  "timestamp": "2025-10-11T18:20:01.234Z",
+  "level": "INFO",
+  "event": "command_start",
+  "command": "receipts:stage",
+  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",
+  "args": {
+    "limit": 10,
+    "dry_run": false
+  },
+  "user": "petermynett",
+  "cwd": "/Users/petermynett/dev/active/manchego"
+}
+
+{
+  "timestamp": "2025-10-11T18:20:03.567Z",
+  "level": "INFO",
+  "event": "command_end",
+  "command": "receipts:stage",
+  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",
+  "result": {
+    "success": true,
+    "total": 10,
+    "succeeded": 8,
+    "failed": 2
+  },
+  "elapsed_s": 2.333
+}
+```
+
+## Operation ID Propagation
+
+The operation_id generated in CLI commands MUST be passed to all business functions:
+
+```python
+# In CLI command
+operation_id = generate_operation_id("receipts_stage")
+result = stage_receipts_to_sheet(limit=limit, operation_id=operation_id)
+
+# Business function signature
+def stage_receipts_to_sheet(limit: int | None = None, operation_id: str | None = None) -> dict:
+    if operation_id is None:
+        operation_id = generate_operation_id("stage_receipts")
+    # Use operation_id in all logs
+```
+
+This ensures all logs (CLI audit + module logs) share the same operation_id for complete traceability.
+
+## Benefits for AI Agents
+
+- **Operation tracing**: Follow a single command from invocation through all module operations
+- **Debugging**: Identify what command triggered an error
+- **Usage patterns**: Understand how commands are used
+- **Performance**: Track command duration and identify slow operations
+- **Audit trail**: Know exactly what was run, when, and with what parameters
+
+## Console vs Audit Logs
+
+- **Console output**: Human-readable with emojis for users (unchanged)
+- **Audit logs**: Machine-readable JSON for agents and monitoring
+- CLI commands produce BOTH: friendly console output AND audit logs

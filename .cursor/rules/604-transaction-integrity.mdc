@@ -1,0 +1,164 @@
+---
+description: Rollback patterns ensuring failed operations leave no partial state or artifacts
+globs:
+  - "manchego/**/*.py"
+  - "!tests/**"
+alwaysApply: false
+---
+
+# Transaction Integrity and Rollback
+
+- All file operations must be atomic: succeed completely or rollback entirely
+- Failed operations MUST NOT leave partial artifacts (moved files, temp files, cache entries, computed hashes)
+- Track all state changes during operation; revert ALL on failure
+- Original files stay in place if processing fails (don't move until success)
+- Clean up temp files, intermediate results, and cached data on failure
+
+## Rollback Scope
+
+When an operation fails, undo:
+- ✅ File moves/renames
+- ✅ Created temp files
+- ✅ Written cache entries
+- ✅ Computed hashes stored anywhere
+- ✅ Partial database writes
+- ✅ Google Sheets uploads (if possible to revert)
+
+## Implementation Patterns
+
+**Use try-finally or context managers to ensure cleanup:**
+
+❌ **Avoid:**
+```python
+def process_file(src: Path) -> Path:
+    # Move file first
+    dst = PROCESSED_DIR / src.name
+    src.rename(dst)
+    
+    # Process (might fail!)
+    result = expensive_operation(dst)
+    
+    # File already moved, can't rollback if this fails
+    return result
+```
+
+✅ **Prefer:**
+```python
+def process_file(src: Path) -> Path:
+    """Process file with rollback on failure."""
+    temp_file = None
+    try:
+        # Work on copy, not original
+        temp_file = TEMP_DIR / f"{src.stem}_processing{src.suffix}"
+        shutil.copy2(src, temp_file)
+        
+        # Process temp file
+        result = expensive_operation(temp_file)
+        
+        # Only move original after success
+        dst = PROCESSED_DIR / src.name
+        temp_file.rename(dst)
+        src.unlink()  # Remove original only after success
+        
+        return dst
+    except Exception as e:
+        # Rollback: clean up temp file
+        if temp_file and temp_file.exists():
+            temp_file.unlink()
+        # Original file remains untouched
+        raise
+```
+
+❌ **Avoid:**
+```python
+def stage_receipt(path: Path):
+    # Compute hash and cache it
+    hash_val = compute_hash(path)
+    HASH_CACHE[path.name] = hash_val
+    
+    # Upload (might fail!)
+    upload_to_sheets(path, hash_val)
+    
+    # Move file (original already modified)
+    path.rename(STAGED_DIR / path.name)
+```
+
+✅ **Prefer:**
+```python
+def stage_receipt(path: Path):
+    """Stage receipt with transactional semantics."""
+    hash_val = None
+    uploaded = False
+    
+    try:
+        # Compute hash (in-memory only)
+        hash_val = compute_hash(path)
+        
+        # Upload to sheets
+        upload_to_sheets(path, hash_val)
+        uploaded = True
+        
+        # Only persist state after success
+        HASH_CACHE[path.name] = hash_val
+        dst = STAGED_DIR / path.name
+        shutil.move(path, dst)
+        
+    except Exception as e:
+        # Rollback: don't cache hash, file stays in place
+        log_error_with_context(logger, e, f"Failed to stage {path.name}")
+        # Original file untouched, no cleanup needed
+        raise
+```
+
+## Partial Success Handling
+
+**For batch operations, isolate failures:**
+
+✅ **Prefer:**
+```python
+def process_many(files: list[Path]) -> dict:
+    """Process files independently with partial success."""
+    results = {"succeeded": [], "failed": []}
+    
+    for file in files:
+        try:
+            # Each file is independent transaction
+            result = process_file(file)
+            results["succeeded"].append(result)
+        except Exception as e:
+            # File-specific failure doesn't affect others
+            results["failed"].append({"file": file.name, "error": str(e)})
+            # This file rolled back, others continue
+    
+    return results
+```
+
+## Temp File Management
+
+**Always clean up temp files, even on success:**
+
+✅ **Prefer:**
+```python
+def convert_pdf(pdf_path: Path) -> Path:
+    """Convert PDF with temp file cleanup."""
+    temp_png = None
+    try:
+        # Create temp file
+        temp_png = TEMP_DIR / f"{pdf_path.stem}_temp.png"
+        convert_to_image(pdf_path, temp_png)
+        
+        # Process temp file
+        result = process_image(temp_png)
+        
+        return result
+    finally:
+        # Always clean up temp, success or failure
+        if temp_png and temp_png.exists():
+            temp_png.unlink()
+```
+
+## Key Principle
+
+**Original files are sacred until success is certain.**
+
+Move/delete originals ONLY as the final step after all processing succeeds.

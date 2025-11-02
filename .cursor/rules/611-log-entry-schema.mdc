@@ -1,0 +1,197 @@
+---
+description: Standard JSON schema for all log entries ensuring consistent machine-readable format
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Log Entry Schema
+
+**Note**: This rule defines the structure of JSON log entries. For the structure of dict objects that functions return, see **Rule 605: Business Return Structures**.
+
+All log entries written to files use JSON format with a standardized schema for machine readability and consistent parsing.
+
+## Standard Schema
+
+### Mandatory Fields
+
+Every log entry MUST include:
+
+```json
+{
+  "timestamp": "2025-10-11T18:20:01.234Z",  // ISO 8601 format with timezone
+  "level": "INFO",                          // DEBUG, INFO, WARNING, ERROR, CRITICAL
+  "module": "manchego.receipts.stage",      // Python module name (__name__)
+  "message": "Staged receipt successfully"  // Human-readable message
+}
+```
+
+### Recommended Fields
+
+Include when available:
+
+```json
+{
+  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",  // For tracing
+  "data": {                                                    // Structured data
+    "file": "receipt_001.jpg",
+    "rows": 12,
+    "hash": "a3d5e8f4..."
+  },
+  "context": {                                                 // Execution context
+    "function": "stage_receipt",
+    "file_path": "/path/to/file"
+  }
+}
+```
+
+### Optional Fields
+
+Include as needed:
+
+```json
+{
+  "error": {                                  // For ERROR level logs
+    "type": "ValueError",
+    "message": "Invalid file format",
+    "traceback": "Traceback (most recent call last)..."
+  },
+  "elapsed_s": 2.333,                        // Duration for operations
+  "user": "petermynett",                     // For CLI commands
+  "cwd": "/path/to/working/dir"              // For CLI commands
+}
+```
+
+## Field Naming Conventions
+
+- **Snake_case**: All field names use snake_case (not camelCase or kebab-case)
+- **Consistent vocabulary**: Use standard terms across all modules
+  - `file` not `filename` or `path` (unless distinguishing)
+  - `rows` not `row_count` or `num_rows`
+  - `elapsed_s` not `duration` or `time_taken`
+  - `succeeded` / `failed` not `success_count` / `failure_count`
+
+## Complete Example
+
+```json
+{
+  "timestamp": "2025-10-11T18:20:01.234Z",
+  "level": "INFO",
+  "module": "manchego.receipts.stage",
+  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",
+  "message": "Staged receipt successfully",
+  "data": {
+    "file": "receipt_001.jpg",
+    "rows": 12,
+    "hash": "a3d5e8f473b2d1c4e5a6f7d8e9b0c1d2",
+    "sheet_id": "1ttXvQx...",
+    "size_bytes": 123456
+  },
+  "context": {
+    "function": "stage_receipt",
+    "file_path": "/Users/petermynett/dev/active/manchego/data/receipts/processed/receipt_001.jpg"
+  },
+  "elapsed_s": 0.123
+}
+```
+
+## Error Log Example
+
+```json
+{
+  "timestamp": "2025-10-11T18:20:02.456Z",
+  "level": "ERROR",
+  "module": "manchego.receipts.preprocess",
+  "operation_id": "receipts_process_20251011_182000_b7f3d9e1",
+  "message": "Failed to process receipt",
+  "data": {
+    "file": "receipt_corrupt.jpg",
+    "file_path": "/path/to/receipt_corrupt.jpg",
+    "size_bytes": 4567
+  },
+  "error": {
+    "type": "PIL.UnidentifiedImageError",
+    "message": "cannot identify image file",
+    "traceback": "Traceback (most recent call last):\n  File..."
+  },
+  "context": {
+    "function": "preprocess_receipt"
+  }
+}
+```
+
+## Data Field Guidelines
+
+The `data` field should contain:
+- **Business data**: Files processed, rows affected, records created
+- **Computed values**: Hashes, IDs, metadata
+- **Quantitative data**: Counts, sizes, durations
+- **References**: External IDs (sheet_id, receipt_id)
+
+❌ **Don't include in data:**
+- Secrets (API keys, tokens, passwords)
+- Large objects (full DataFrames, file contents)
+- Redundant information already in other fields
+
+## Context Field Guidelines
+
+The `context` field should contain:
+- **Execution context**: Function names, file paths, line numbers
+- **Environment info**: User, working directory, host
+- **Request info**: API endpoints, request IDs (future)
+
+## Creating Logs with Schema
+
+Use the `extra` parameter to add structured data:
+
+```python
+logger.info("Staged receipt successfully", extra={
+    "operation_id": operation_id,
+    "data": {
+        "file": file.name,
+        "rows": 12,
+        "hash": hash_value
+    },
+    "context": {
+        "function": "stage_receipt",
+        "file_path": str(file)
+    },
+    "elapsed_s": elapsed_time
+})
+```
+
+The JSON formatter will extract these fields to the top level.
+
+## Parsing Logs
+
+Standard schema enables consistent parsing:
+
+```python
+import json
+
+# Parse JSON log line
+log_entry = json.loads(log_line)
+
+# Access standard fields
+timestamp = log_entry["timestamp"]
+level = log_entry["level"]
+operation_id = log_entry.get("operation_id")
+
+# Access structured data
+if "data" in log_entry:
+    file_name = log_entry["data"].get("file")
+    rows = log_entry["data"].get("rows")
+
+# Check for errors
+if log_entry["level"] == "ERROR" and "error" in log_entry:
+    error_type = log_entry["error"]["type"]
+    error_message = log_entry["error"]["message"]
+```
+
+## Benefits
+
+- **Machine parsing**: Easy to parse with jq, Python, or other tools
+- **Consistent structure**: All logs follow same schema
+- **Type safety**: Fields have predictable types
+- **Extensibility**: Can add new fields without breaking existing parsers
+- **Agent debugging**: AI agents can easily understand log structure

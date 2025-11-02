@@ -1,0 +1,243 @@
+---
+description: Database directory structure, responsibilities, and core patterns for manchego
+globs:
+  - "db/**"
+  - "sql/**"
+  - "manchego/database/**/*.py"
+alwaysApply: false
+---
+
+# Database Patterns
+
+## Directory Responsibilities
+
+### db/
+Runtime database assets that change over time:
+- Database files: `manchego_{env}.db` where env is `dev`, `stage`, or `prod`
+- `migrations/` versioned schema changes (timestamp-named SQL files)
+- `snapshots/` compressed database backups with timestamps
+- `README.md` documenting initialization, migration, and backup workflows
+
+### sql/
+Canonical, read-only SQL artifacts committed to source:
+- `schema.sql` baseline schema snapshot (matches latest migration state)
+- `queries/` complex analytical queries (one file per query, loaded by Python)
+- `views/` view definitions (one file per view)
+- `functions/` or `procedures/` server-side logic if used
+
+### manchego/database/
+Application code for database interaction:
+- Connection management and configuration
+- CRUD operations and repositories
+- Data loaders and ETL orchestration
+- Migration runner integration
+- Query execution helpers
+- NO CLI output or user messaging (raise errors, return results)
+
+## Environment Configuration
+
+### Environment Detection
+- Use `MANCHEGO_ENV` environment variable to select database
+- Valid values: `dev`, `stage`, `prod`
+- Default to `dev` if not set
+- Database path: `db/manchego_{env}.db`
+
+### Setting Environment
+```bash
+export MANCHEGO_ENV=dev    # Development
+export MANCHEGO_ENV=stage  # Staging
+export MANCHEGO_ENV=prod   # Production
+```
+
+## Connection Patterns
+
+### Always Use Context Managers
+Use `DatabaseConnection` context manager for automatic commit/rollback:
+
+```python
+from manchego.database import DatabaseConnection
+
+with DatabaseConnection() as conn:
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM vendors")
+    results = cursor.fetchall()
+# Auto-commits on success, rolls back on exception
+```
+
+### Single-User Assumptions
+- No connection pooling required (single user)
+- Each operation opens/closes connection
+- SQLite handles concurrency for single-user workloads
+
+### Enable Foreign Keys
+Always enable foreign key constraints at connection time:
+
+```python
+conn.execute("PRAGMA foreign_keys = ON")
+```
+
+## Query Organization
+
+### Simple Queries (< 10 lines)
+Write inline with parameterized queries:
+
+```python
+cursor.execute(
+    "SELECT * FROM vendors WHERE name = ?",
+    (vendor_name,)
+)
+```
+
+### Complex Queries (analytical, multi-table)
+Store in `sql/queries/` as separate `.sql` files:
+
+```python
+query_path = Path("sql/queries/monthly_spending.sql")
+with open(query_path) as f:
+    query = f.read()
+cursor.execute(query, params)
+```
+
+### Never String Interpolate User Input
+Always use parameterized queries for values:
+
+❌ **Avoid:**
+```python
+# SQL injection vulnerability
+query = f"SELECT * FROM vendors WHERE name = '{user_input}'"
+cursor.execute(query)
+```
+
+✅ **Prefer:**
+```python
+query = "SELECT * FROM vendors WHERE name = ?"
+cursor.execute(query, (user_input,))
+```
+
+### Table Names (Validated Only)
+Table/column names cannot be parameterized. Validate against whitelist:
+
+```python
+VALID_TABLES = {"vendors", "receipts", "ledger", "timeline"}
+if table_name not in VALID_TABLES:
+    raise ValueError(f"Invalid table: {table_name}")
+query = f"SELECT COUNT(*) FROM {table_name}"  # Safe after validation
+```
+
+## Error Handling
+
+### Log and Re-raise
+Database layer logs errors but does not print to console:
+
+```python
+try:
+    cursor.execute(query, params)
+except sqlite3.IntegrityError as e:
+    logger.error(f"Integrity constraint violated: {e}")
+    raise  # Let caller handle user messaging
+```
+
+### Common Exceptions to Handle
+- `sqlite3.IntegrityError` - constraint violations (foreign keys, unique)
+- `sqlite3.OperationalError` - locked database, syntax errors
+- `sqlite3.DatabaseError` - general database errors
+
+### Transaction Boundaries
+`DatabaseConnection` context manager handles transactions:
+- Commits on successful `__exit__`
+- Rolls back on exception
+- No manual commit/rollback needed in most cases
+
+## Data Loading Patterns
+
+### Validation Before Insert
+Always validate and clean records before insertion:
+
+```python
+def validate_record(self, record: dict) -> dict:
+    # Remove empty values
+    cleaned = {k: v for k, v in record.items() if v not in (None, "")}
+    
+    # Add required fields
+    if "id" not in cleaned:
+        cleaned["id"] = str(uuid_v4())
+    
+    if "created_at" not in cleaned:
+        cleaned["created_at"] = datetime.now(UTC).isoformat()
+    
+    cleaned["updated_at"] = datetime.now(UTC).isoformat()
+    
+    return cleaned
+```
+
+### Bulk Inserts
+Use `executemany()` for bulk operations within a single transaction:
+
+```python
+with DatabaseConnection() as conn:
+    cursor = conn.cursor()
+    cursor.executemany(
+        "INSERT INTO vendors (id, name) VALUES (?, ?)",
+        records  # List of tuples
+    )
+    # Single commit for all inserts
+```
+
+### Error Handling in Loaders
+Log individual failures but continue processing:
+
+```python
+for record in records:
+    try:
+        insert_record(record)
+        logger.debug(f"Inserted: {record['id']}")
+    except Exception as e:
+        logger.error(f"Failed to insert {record}: {e}")
+        continue  # Keep processing other records
+```
+
+## Schema Management
+
+### Baseline Schema
+`sql/schema.sql` contains the complete, current schema:
+- Updated after each migration
+- Used for fresh database initialization
+- Source of truth for table structures
+
+### Schema Evolution
+All schema changes via migrations in `db/migrations/`:
+- Migrations are chronologically ordered SQL files
+- Never modify `schema.sql` directly
+- Regenerate `schema.sql` from applied migrations
+
+## Examples
+
+❌ **Avoid:**
+```python
+# Direct print in database module
+def load_data():
+    print("Loading data...")  # CLI responsibility
+    insert_records(data)
+    
+# String interpolation of user input
+cursor.execute(f"SELECT * FROM {table} WHERE id = {user_id}")
+
+# Mixing SQL artifacts
+# Migration stored in sql/ instead of db/migrations/
+```
+
+✅ **Prefer:**
+```python
+# Return results, let CLI handle output
+def load_data() -> list[str]:
+    logger.info("Loading data from sheet")
+    return insert_records(data)
+
+# Parameterized queries
+cursor.execute("SELECT * FROM vendors WHERE id = ?", (user_id,))
+
+# Proper artifact placement
+# Migrations: db/migrations/202501031430_add_vendors.sql
+# Queries: sql/queries/monthly_report.sql
+# Schema: sql/schema.sql
+```

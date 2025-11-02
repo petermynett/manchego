@@ -1,0 +1,56 @@
+---
+description: User-friendly console output patterns for CLI commands with clear status messaging
+globs:
+  - "manchego/cli/**/*.py"
+alwaysApply: false
+---
+
+# CLI Output Standards
+
+- Show user-friendly summaries with emoji indicators (🔄, ✅, ⚠️, ❌)
+- Use `typer.echo()` for all console output, never `print()`
+- Distinguish between dry-run previews and actual operations
+- Show progress indicators for long operations
+- Display structured summaries (created/skipped/failed counts)
+- Use `err=True` for error messages sent to stderr
+- Catch exceptions and show user-friendly error messages
+- Console output is for users; file logs are for agents (see rule 609)
+
+## Examples
+
+❌ **Avoid:**
+```python
+print(f"Processed: {stats['created']} Skipped: {stats['skipped']}")
+typer.echo("Error: PIL.UnidentifiedImageError: cannot identify image file")
+```
+
+✅ **Prefer:**
+```python
+if stats['created'] > 0:
+    typer.echo(f"✅ Created {stats['created']} processed receipts")
+if stats['failed'] > 0:
+    typer.echo(f"⚠️ {stats['failed']} files failed (check logs for details)")
+typer.echo(f"❌ Processing failed: {e}", err=True)
+```
+
+❌ **Avoid:**
+```python
+def cli_preprocess():
+    stats = preprocess_all()
+    typer.echo(f"Done: {stats}")
+```
+
+✅ **Prefer:**
+```python
+def cli_preprocess():
+    try:
+        typer.echo("🔄 Starting receipt preprocessing...")
+        stats = preprocess_all()
+        # User-friendly summary with conditional messages
+        if stats['created'] > 0:
+            typer.echo(f"✅ Created {stats['created']} processed receipts")
+        typer.echo(f"⏱️ Total time: {stats['elapsed_s']}s")
+    except Exception as e:
+        typer.echo(f"❌ Preprocessing failed: {e}", err=True)
+        raise typer.Exit(1) from e
+```

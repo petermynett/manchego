@@ -1,0 +1,199 @@
+---
+description: Migration file naming conventions and workflow for database schema changes
+globs:
+  - "db/migrations/**/*.sql"
+alwaysApply: false
+---
+
+# Migration Naming and Workflow
+
+## File Naming Convention
+
+### Format
+```
+YYYYMMDDHHMM_description.sql
+```
+
+### Timestamp Component
+- `YYYY` - Four-digit year (2025)
+- `MM` - Two-digit month (01-12)
+- `DD` - Two-digit day (01-31)
+- `HH` - Two-digit hour in 24-hour format (00-23)
+- `MM` - Two-digit minute (00-59)
+
+### Description Component
+- Use lowercase with underscores
+- Start with action verb: `add`, `remove`, `modify`, `create`, `drop`, `alter`
+- Be specific about what changes
+- Keep under 50 characters
+
+### Examples
+```
+202501031430_add_receipts_table.sql
+202501031445_add_vendor_foreign_keys.sql
+202501041200_create_timeline_indexes.sql
+202501051630_modify_ledger_add_notes_column.sql
+202501060900_drop_deprecated_accounts_table.sql
+```
+
+## Migration File Structure
+
+### Basic Template
+```sql
+-- Migration: YYYYMMDDHHMM_description
+-- Created: YYYY-MM-DD HH:MM
+-- Description: Brief explanation of what this migration does
+
+-- ============================================================================
+-- UP: Apply changes
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS vendors (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_vendors_name ON vendors(name);
+
+-- ============================================================================
+-- DOWN: Rollback changes (optional but recommended)
+-- ============================================================================
+
+-- DROP INDEX idx_vendors_name;
+-- DROP TABLE vendors;
+```
+
+### Migration Guidelines
+- Start with descriptive comment block
+- Separate UP and DOWN sections clearly
+- Use `IF NOT EXISTS` / `IF EXISTS` for idempotency
+- Include both schema and data changes if needed
+- Comment the DOWN section but keep it for reference
+
+## Generating Timestamps
+
+### Command Line
+```bash
+# Generate timestamp for new migration
+date +"%Y%m%d%H%M"
+
+# Create new migration file
+touch "db/migrations/$(date +"%Y%m%d%H%M")_add_new_table.sql"
+```
+
+### Python Helper
+```python
+from datetime import datetime
+
+def generate_migration_name(description: str) -> str:
+    """Generate migration filename with current timestamp."""
+    timestamp = datetime.now().strftime("%Y%m%d%H%M")
+    return f"{timestamp}_{description}.sql"
+
+# Usage
+filename = generate_migration_name("add_receipts_table")
+# Returns: "202501031430_add_receipts_table.sql"
+```
+
+## Migration Workflow
+
+### Creating a Migration
+1. Generate timestamp: `date +"%Y%m%d%H%M"`
+2. Create file: `db/migrations/{timestamp}_{description}.sql`
+3. Write SQL changes in UP section
+4. Document rollback in DOWN section (commented)
+5. Test migration on dev database
+
+### Applying Migrations
+```python
+# Future: Simple Python migration runner
+python -m manchego.database migrate apply
+```
+
+### Manual Application (Current)
+```bash
+# Connect to appropriate database
+sqlite3 db/manchego_dev.db < db/migrations/202501031430_add_receipts_table.sql
+```
+
+### After Successful Migration
+1. Update `sql/schema.sql` to reflect current state
+2. Commit both migration file and updated schema
+3. Document any manual steps required
+
+## Migration Naming Patterns
+
+### Tables
+- `add_{table_name}_table` - New table
+- `drop_{table_name}_table` - Remove table
+- `rename_{old_name}_to_{new_name}` - Rename table
+
+### Columns
+- `add_{table}_{column}_column` - Add column
+- `remove_{table}_{column}_column` - Remove column
+- `modify_{table}_{column}_type` - Change column type
+- `rename_{table}_{old}_to_{new}` - Rename column
+
+### Indexes
+- `create_{table}_{column}_index` - Add index
+- `drop_{table}_{column}_index` - Remove index
+
+### Constraints
+- `add_{table}_foreign_key_to_{ref_table}` - Add foreign key
+- `add_{table}_{column}_unique_constraint` - Add unique constraint
+- `remove_{table}_{constraint_name}` - Remove constraint
+
+### Data Migrations
+- `migrate_{table}_data_{description}` - Data transformation
+- `backfill_{table}_{column}_values` - Populate existing rows
+
+## Ordering and Dependencies
+
+### Chronological Order
+- Migrations are applied in timestamp order
+- Never modify existing migration files
+- Create new migration to fix/reverse previous one
+
+### Handling Conflicts
+If two migrations have same timestamp:
+- Add seconds to timestamp if needed (YYYYMMDDHHMMSS)
+- Or wait one minute before creating next migration
+- Prefer waiting over adding seconds for simplicity
+
+### Dependencies
+- Reference tables before creating foreign keys
+- Drop foreign keys before dropping referenced tables
+- Document dependencies in migration comment
+
+## Examples
+
+❌ **Avoid:**
+```
+001_schema.sql                    # No timestamp
+add_vendors.sql                   # No timestamp
+20250103_vendors.sql              # Ambiguous date format
+202501031430_stuff.sql            # Vague description
+202501031430_AddVendorsTable.sql  # CamelCase description
+```
+
+✅ **Prefer:**
+```
+202501031430_add_vendors_table.sql
+202501031445_add_vendor_foreign_keys_to_receipts.sql
+202501041200_create_vendors_name_index.sql
+202501051630_migrate_legacy_vendor_data.sql
+202501060900_remove_deprecated_accounts_table.sql
+```
+
+## Validation Checklist
+
+Before committing a migration:
+- [ ] Filename follows `YYYYMMDDHHMM_description.sql` format
+- [ ] Description is action-oriented and specific
+- [ ] Migration includes header comment block
+- [ ] SQL is idempotent (safe to run multiple times)
+- [ ] Migration tested on dev database
+- [ ] `sql/schema.sql` updated if needed
+- [ ] No manual editing of previous migrations

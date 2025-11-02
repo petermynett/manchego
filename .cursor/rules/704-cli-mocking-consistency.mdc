@@ -1,0 +1,180 @@
+---
+description: Consistent mocking targets for CLI tests to avoid testing wrong layers
+globs:
+  - ["tests/cli/**/*.py"]
+alwaysApply: false
+---
+
+# CLI Test Mocking Consistency
+
+## Mocking Target Rules
+
+- **CLI tests**: Mock business logic functions, NOT CLI internal helper functions
+- **Python mocking rule**: Mock where function is USED, not where it's DEFINED
+- **Target pattern**: If CLI imports `from manchego.x.y import func`, mock at `manchego.cli.domain.func`
+- **Avoid**: Mocking internal CLI helpers like `_format_output`, `_validate_args`
+
+## Python Import Mechanics
+
+When CLI does:
+```python
+from manchego.receipts.preprocess import preprocess_all
+```
+
+The function exists in CLI's namespace as `manchego.cli.receipts.preprocess_all`, so that's where you mock it.
+
+## Examples
+
+### Example 1: Basic Mocking (Where Function is Imported)
+
+✅ **Correct - Mock where function is imported:**
+```python
+# CLI imports: from manchego.receipts.preprocess import preprocess_all
+# So mock where it's USED (in CLI namespace):
+mock_preprocess = mocker.patch("manchego.cli.receipts.preprocess_all")
+```
+
+❌ **Wrong - Mocking where it's defined won't work:**
+```python
+# This won't affect CLI's imported copy:
+mock_preprocess = mocker.patch("manchego.receipts.preprocess.preprocess_all")
+```
+
+### Example 2: Mocking Business Function with operation_id (NEW)
+
+Business functions now accept `operation_id` parameter. Mock and verify:
+
+```python
+def test_receipts_process__passes_operation_id(mocker):
+    """Verify CLI passes operation_id to business function."""
+    # Mock business function (now has operation_id parameter)
+    mock_process = mocker.patch("manchego.cli.receipts.preprocess_all")
+    mock_process.return_value = {"success": True, "total": 5, "succeeded": 5, "failed": 0}
+    
+    # Mock operation_id generation
+    mock_gen_id = mocker.patch("manchego.cli.receipts.generate_operation_id")
+    mock_gen_id.return_value = "test_operation_id_12345"
+    
+    # Mock CLI audit (to avoid file I/O)
+    mocker.patch("manchego.cli.receipts.log_command_start")
+    mocker.patch("manchego.cli.receipts.log_command_end")
+    
+    # Run command
+    from typer.testing import CliRunner
+    runner = CliRunner()
+    result = runner.invoke(app, ["process", "--limit", "5"])
+    
+    assert result.exit_code == 0
+    
+    # Verify business function called WITH operation_id
+    mock_process.assert_called_once_with(
+        limit=5,
+        recurse=False,
+        force=False,
+        operation_id="test_operation_id_12345"  # NEW parameter
+    )
+```
+
+### Example 3: Mocking CLI Audit Helpers
+
+For most tests, mock CLI audit functions to avoid log file creation:
+
+```python
+def test_stage_command__with_audit_mocked(mocker):
+    """Test command with CLI audit logging mocked."""
+    # Mock business logic
+    mock_stage = mocker.patch("manchego.cli.receipts.stage_receipts_to_sheet")
+    mock_stage.return_value = {"success": True, "total": 10, "succeeded": 10, "failed": 0}
+    
+    # Mock CLI audit logging (imported in CLI file)
+    mocker.patch("manchego.cli.receipts.log_command_start")
+    mocker.patch("manchego.cli.receipts.log_command_end")
+    mocker.patch("manchego.cli.receipts.generate_operation_id", return_value="test_id")
+    
+    # Now test CLI behavior without worrying about log files
+    runner = CliRunner()
+    result = runner.invoke(app, ["stage"])
+    
+    assert result.exit_code == 0
+    assert "10" in result.output
+```
+
+### Example 4: What NOT to Mock
+
+❌ **Wrong - Mocking CLI internal helpers:**
+```python
+# Don't mock internal CLI implementation details:
+mock_format = mocker.patch("manchego.cli.receipts._format_preprocess_output")
+mock_sync = mocker.patch("manchego.cli.receipts._sync_receipts")  # Internal helper
+```
+
+## Enforcement
+
+- Mock imported business logic functions at their import location (CLI namespace)
+- Mock CLI audit functions (log_command_start, log_command_end, generate_operation_id) to avoid file I/O
+- Don't mock CLI internal helper functions (those are implementation details)
+- CLI tests verify command parsing and user output, not business implementation
+
+## After Adding Parameters to Business Functions
+
+When business functions gain new parameters (e.g., `operation_id`), systematically update all CLI tests:
+
+### Step-by-Step Update Process
+
+1. **Find all affected tests:**
+   ```bash
+   grep -r "assert_called_once_with" tests/cli/test_receipts.py
+   ```
+
+2. **Update mock call expectations:**
+   ```python
+   # BEFORE (old signature)
+   mock.assert_called_once_with(limit=5, recurse=False, force=False)
+   
+   # AFTER (added operation_id parameter)
+   mock.assert_called_once_with(limit=5, recurse=False, force=False, operation_id="test_id")
+   ```
+
+3. **Mock parameter generation if auto-generated:**
+   ```python
+   # Add to test setup
+   mocker.patch("manchego.cli.receipts.generate_operation_id", return_value="test_id")
+   ```
+
+4. **Update return value structures if changed:**
+   ```python
+   # BEFORE
+   mock.return_value = {"created": 5, "total": 10}
+   
+   # AFTER (new standardized structure per Rule 605)
+   mock.return_value = {"success": True, "total": 10, "succeeded": 5, "failed": 0}
+   ```
+
+5. **Run tests to find remaining failures:**
+   ```bash
+   pytest tests/cli/test_receipts.py -v
+   ```
+
+### Common Pitfall
+
+❌ **Don't forget parametrized tests:**
+```python
+@pytest.mark.parametrize("args,expected_call", [
+    (["process"], {"limit": None}),
+    (["process", "--limit", "5"], {"limit": 5}),
+])
+def test_parses_args(mocker, args, expected_call):
+    # Need to add operation_id to expected_call!
+    expected_call["operation_id"] = "test_id"  # Add this line
+    mock.assert_called_once_with(**expected_call)
+```
+
+## Required Reading
+
+- **Rule 700**: Testing Standards - foundation for all testing
+
+## See Also
+
+- Rule 701: CLI Testing Patterns - complete examples using these mocking patterns
+- Rule 612: CLI Command Pattern - implementation pattern being tested
+- Rule 708: Test Migration Patterns - how to update mocks during refactors

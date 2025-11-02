@@ -1,0 +1,119 @@
+---
+description: Docstring and documentation standards for Python code in manchego
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Docstring Standards
+
+Use **Google-style docstrings** for all Python code. Keep documentation direct, functional, and minimal.
+
+## Public Functions and Classes
+
+- Always include full docstrings with summary, parameters, return values, and raised exceptions
+- Skip examples unless truly useful
+- Write for future maintainer reading the code
+
+## Private Functions and Methodsw
+
+- Use short 1-2 line docstrings summarizing purpose, inputs, and outputs
+- Format: Single line description (no Args/Returns sections needed)
+
+## Dunder Methods
+
+- Document only if behavior is non-obvious
+- `__init__`, `__str__`, `__repr__` usually don't need docstrings
+- If documented, use short format like private methods
+
+## Modules
+
+- Always include module-level docstring at the top
+- Describe the file's purpose and what it contains
+- Keep it to 2-4 lines
+
+## Config Files
+
+- Add module docstring describing what the config contains and usage rules
+- Don't add docstrings per constant
+- Use inline comments for non-obvious constants (e.g., regex patterns)
+
+## Import Naming
+
+- Import `global_config` as `g`
+- Import local `config.py` as `cfg`
+- Use explicit names for other configs (e.g., `ledger_config`)
+
+## Style
+
+- Comments explain **why**, not **what** (code shows what)
+- Remove outdated docstrings/comments rather than leaving misleading ones
+- Never add TODOs in docstrings
+- Skip overly verbose documentation
+
+## Examples
+
+❌ **Avoid:**
+```python
+def _normalize_vendor(name: str) -> str:
+    """Clean and normalize vendor names.
+    
+    Args:
+        name (str): The vendor name to normalize.
+        
+    Returns:
+        str: The normalized vendor name.
+        
+    Examples:
+        >>> _normalize_vendor("WALMART  ")
+        "walmart"
+    """
+```
+
+✅ **Prefer:**
+```python
+def _normalize_vendor(name: str) -> str:
+    """Clean and normalize vendor names for consistency."""
+```
+
+❌ **Avoid:**
+```python
+"""This is a module."""
+```
+
+✅ **Prefer:**
+```python
+"""
+Module for parsing receipts into structured records.
+
+Handles reading processed receipt images, running parsing logic,
+and writing structured outputs to Google Sheets.
+"""
+```
+
+❌ **Avoid:**
+```python
+class Receipt:
+    def __init__(self, vendor: str, total: float) -> None:
+        """Initialize a receipt.
+        
+        Args:
+            vendor: Vendor name
+            total: Total amount
+        """
+```
+
+✅ **Prefer:**
+```python
+class Receipt:
+    """Represents a parsed receipt with vendor and total.
+    
+    Attributes:
+        vendor (str): The vendor name.
+        total (float): The total amount.
+    """
+    
+    def __init__(self, vendor: str, total: float) -> None:
+        self.vendor = vendor
+        self.total = total
+```

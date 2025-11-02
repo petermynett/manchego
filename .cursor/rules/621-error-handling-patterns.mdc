@@ -1,0 +1,71 @@
+---
+description: Consistent error handling patterns across modules with proper logging and user communication
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Error Handling Patterns
+
+- Lower-level functions: catch errors, log with context, return None/failure indicators
+- CLI functions: catch exceptions, show user-friendly messages, log detailed errors
+- Use `log_file_failure(logger, filename, operation_id, error)` for file failures (see rule 602)
+- Use `log_error_with_context(logger, e, context)` for general error logging
+- Don't let technical errors bubble up to users - translate to friendly messages
+- Always include enough context to debug issues
+- Use appropriate exception types and meaningful error messages
+
+## Examples
+
+❌ **Avoid:**
+```python
+def process_file(path):
+    try:
+        # processing
+        return result
+    except Exception as e:
+        print(f"Error: {e}")
+        raise  # Let error bubble up
+```
+
+✅ **Prefer:**
+```python
+def process_file(path, operation_id):
+    try:
+        # processing
+        return result
+    except Exception as e:
+        log_file_failure(logger, path.name, operation_id, e, file_path=str(path))
+        return None  # Return failure indicator
+```
+
+❌ **Avoid:**
+```python
+def cli_process():
+    result = process_files()
+    typer.echo(f"Result: {result}")
+```
+
+✅ **Prefer:**
+```python
+def cli_process():
+    try:
+        typer.echo("🔄 Processing files...")
+        result = process_files()
+        if result['failed'] > 0:
+            typer.echo(f"⚠️ {result['failed']} files failed (check logs)")
+        typer.echo("✅ Processing completed")
+    except Exception as e:
+        typer.echo(f"❌ Processing failed: {e}", err=True)
+        raise typer.Exit(1) from e
+```
+
+❌ **Avoid:**
+```python
+logger.error("Something went wrong")
+```
+
+✅ **Prefer:**
+```python
+log_error_with_context(logger, e, f"Failed to parse receipt {filename}")
+```

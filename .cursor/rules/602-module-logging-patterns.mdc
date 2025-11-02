@@ -1,0 +1,179 @@
+---
+description: Standardized logging patterns for module-level functions with operation tracing and structured data
+globs:
+  - "manchego/**/*.py"
+  - "!manchego/cli/**/*.py"
+alwaysApply: false
+---
+
+# Module Logging Patterns
+
+Module functions should log operational details using structured JSON format. All logs for an operation should share the same operation_id.
+
+## Operation Lifecycle Pattern
+
+Every batch operation should follow this pattern:
+
+```python
+from manchego.utils.logging_helpers import (
+    generate_operation_id,
+    log_operation_start,
+    log_file_success,
+    log_file_failure,
+    log_operation_summary
+)
+
+def stage_all_receipts() -> dict:
+    """Stage all receipts to Google Sheets."""
+    operation_id = generate_operation_id("stage_receipts")
+    
+    # 1. Log operation start
+    log_operation_start(logger, "stage_receipts", operation_id, 
+                       limit=None, recurse=False)
+    
+    results = {"succeeded": [], "failed": []}
+    
+    for file in files:
+        try:
+            result = stage_receipt(file, operation_id)
+            # 2. Log per-file success
+            log_file_success(logger, file.name, operation_id,
+                           rows=result['rows'], hash=result['hash'])
+            results["succeeded"].append(result)
+        except Exception as e:
+            # 3. Log per-file failure
+            log_file_failure(logger, file.name, operation_id, e,
+                           file_path=str(file), file_size=file.stat().st_size)
+            results["failed"].append({"item": file.name, "reason": str(e)})
+    
+    # 4. Log operation summary
+    summary = {
+        "success": len(results["failed"]) == 0,
+        "total": len(files),
+        "succeeded": len(results["succeeded"]),
+        "failed": len(results["failed"]),
+        "failures": results["failed"]
+    }
+    log_operation_summary(logger, "stage_receipts", operation_id, summary)
+    
+    return summary
+```
+
+## Required Logging Points
+
+### 1. Operation Start
+```python
+log_operation_start(logger, "operation_name", operation_id, **params)
+```
+
+Logs: operation name, operation_id, input parameters
+
+### 2. Per-File Success (INFO level)
+```python
+log_file_success(logger, filename, operation_id, **metadata)
+```
+
+Include key metadata:
+- File name
+- Rows/items processed
+- Computed hash/ID
+- Any business-specific data
+
+### 3. Per-File Failure (ERROR level)
+```python
+log_file_failure(logger, filename, operation_id, exception, **context)
+```
+
+Include full context:
+- File name and path
+- Exception type and message
+- File size, format, or other relevant metadata
+- Stack trace (automatically captured)
+
+### 4. Operation Summary
+```python
+log_operation_summary(logger, "operation_name", operation_id, result_dict)
+```
+
+Include:
+- Total items processed
+- Success/failure counts
+- Elapsed time
+- List of failures (if any)
+
+## Structured Data Usage
+
+Always use `extra={"data": {...}}` for structured fields, not string formatting:
+
+❌ **Avoid:**
+```python
+logger.info(f"Staged {filename}: {rows} rows, hash={hash_val}")
+```
+
+✅ **Prefer:**
+```python
+logger.info("Staged receipt", extra={
+    "operation_id": operation_id,
+    "data": {
+        "file": filename,
+        "rows": rows,
+        "hash": hash_val
+    }
+})
+```
+
+## DEBUG Logging for Decisions
+
+Log why decisions were made (DEBUG level):
+
+```python
+# Why was this file skipped?
+logger.debug("Skipping file: already processed", extra={
+    "operation_id": operation_id,
+    "data": {
+        "file": filename,
+        "reason": "hash_match",
+        "existing_hash": existing_hash,
+        "new_hash": new_hash
+    }
+})
+
+# Data transformation details
+logger.debug("Data transformation complete", extra={
+    "operation_id": operation_id,
+    "data": {
+        "input_rows": len(df),
+        "output_rows": len(df_clean),
+        "dropped_rows": len(df) - len(df_clean),
+        "columns": list(df_clean.columns)
+    }
+})
+```
+
+## WARNING Logging for Skipped Items
+
+```python
+logger.warning("Skipped duplicate file", extra={
+    "operation_id": operation_id,
+    "data": {
+        "file": filename,
+        "reason": "duplicate",
+        "existing_file": existing_filename
+    }
+})
+```
+
+## Operation ID Propagation
+
+Pass operation_id through the call stack:
+
+```python
+def stage_all_receipts() -> dict:
+    operation_id = generate_operation_id("stage_receipts")
+    for file in files:
+        stage_receipt(file, operation_id)  # Pass operation_id
+
+def stage_receipt(file: Path, operation_id: str) -> dict:
+    logger.info("Staging receipt", extra={"operation_id": operation_id, ...})
+    # All logs use the same operation_id
+```

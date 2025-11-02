@@ -1,0 +1,231 @@
+---
+description: Complete template pattern for CLI commands with audit logging and operation tracing
+globs:
+  - "manchego/cli/**/*.py"
+alwaysApply: false
+---
+
+# CLI Command Pattern
+
+Complete pattern for implementing CLI commands with audit logging, operation tracing, and proper error handling.
+
+## Standard CLI Command Template
+
+Every CLI command should follow this exact pattern:
+
+```python
+import time
+from typing import Annotated
+
+import typer
+
+from manchego.cli.base import format_result
+from manchego.utils.cli_audit import log_command_end, log_command_start
+from manchego.utils.logging_helpers import generate_operation_id
+
+@app.command("operation")
+def operation_cmd(
+    arg1: Annotated[type, typer.Option(help="Description")] = default,
+    dry_run: Annotated[bool, typer.Option(help="Preview without executing")] = False,
+):
+    """Description of what this command does."""
+    # 1. Generate operation_id (ALWAYS at CLI entry point)
+    operation_id = generate_operation_id("dataset_operation")
+    t0 = time.time()
+    
+    # 2. Log command start (for audit trail)
+    log_command_start("dataset:operation", {
+        "arg1": arg1,
+        "dry_run": dry_run
+    }, operation_id)
+    
+    # 3. Handle dry-run mode if supported
+    if dry_run:
+        typer.echo("🔍 Dry-run: Previewing operation...")
+        # Preview logic here
+        result = {"success": True, "dry_run": True}
+        log_command_end("dataset:operation", operation_id, result, time.time() - t0)
+        return
+    
+    # 4. User-friendly console output
+    typer.echo("🔄 Starting operation...")
+    
+    try:
+        # 5. Call business function with operation_id
+        result = business_function(arg1, operation_id=operation_id)
+        
+        # 6. Log command end (success)
+        log_command_end("dataset:operation", operation_id, result, time.time() - t0)
+        
+        # 7. Format and display result for user
+        format_result(result, "Operation name")
+        
+    except Exception as e:
+        # 8. Log command end (failure)
+        log_command_end("dataset:operation", operation_id, {
+            "success": False,
+            "error": str(e)
+        }, time.time() - t0)
+        
+        # 9. User-friendly error message
+        typer.echo(f"❌ Operation failed: {e}", err=True)
+        raise typer.Exit(1) from e
+```
+
+## Key Components Explained
+
+### 1. Operation ID Generation
+```python
+operation_id = generate_operation_id("dataset_operation")
+```
+- **ALWAYS** generate at CLI entry point
+- Use snake_case operation name
+- Pass to all business functions
+
+### 2. Command Audit Logging
+```python
+log_command_start("dataset:operation", args_dict, operation_id)
+# ... operation ...
+log_command_end("dataset:operation", operation_id, result, elapsed_s)
+```
+- Logs to `data/logs/cli/commands.log`
+- Creates audit trail of all CLI invocations
+- Links user actions to module operations
+
+### 3. Timing
+```python
+t0 = time.time()
+# ... operation ...
+elapsed_s = time.time() - t0
+```
+- Capture start time at beginning
+- Calculate elapsed at end
+- Include in audit log
+
+### 4. Error Handling
+- Always log command end, even on error
+- Show user-friendly message with emoji
+- Use `err=True` for stderr
+- Raise `typer.Exit(1)` for proper exit code
+
+## Complete Real-World Examples
+
+### Example 1: Simple Command (Process Receipts)
+
+```python
+@app.command("process")
+def process_cmd(
+    limit: Annotated[int | None, typer.Option(help="Limit number of items")] = None,
+    force: Annotated[bool, typer.Option(help="Force reprocessing")] = False,
+):
+    """Process raw receipt images to normalized JPEGs."""
+    operation_id = generate_operation_id("receipts_process")
+    t0 = time.time()
+    
+    log_command_start("receipts:process", {"limit": limit, "force": force}, operation_id)
+    
+    typer.echo("🔄 Processing receipts...")
+    try:
+        result = preprocess_all(limit=limit, force=force, operation_id=operation_id)
+        log_command_end("receipts:process", operation_id, result, time.time() - t0)
+        format_result(result, "Receipt processing")
+    except Exception as e:
+        log_command_end("receipts:process", operation_id, {"success": False, "error": str(e)}, time.time() - t0)
+        typer.echo(f"❌ Receipt processing failed: {e}", err=True)
+        raise typer.Exit(1) from e
+```
+
+### Example 2: Command with Dry-Run
+
+```python
+@app.command("stage")
+def stage_cmd(
+    limit: Annotated[int | None, typer.Option(help="Limit number of items")] = None,
+    dry_run: Annotated[bool, typer.Option(help="Preview without executing")] = False,
+):
+    """Stage processed data to Google Sheets."""
+    operation_id = generate_operation_id("dataset_stage")
+    t0 = time.time()
+    
+    log_command_start("dataset:stage", {"limit": limit, "dry_run": dry_run}, operation_id)
+    
+    if dry_run:
+        typer.echo("🔍 Dry-run: Previewing staging...")
+        result = stage_data(limit=limit, dry_run=True)
+        typer.echo(f"📋 {result}")
+        log_command_end("dataset:stage", operation_id, {"success": True, "dry_run": True}, time.time() - t0)
+        return
+
+    typer.echo("📤 Staging data...")
+    try:
+        result = stage_data(limit=limit, dry_run=False, operation_id=operation_id)
+        log_command_end("dataset:stage", operation_id, result, time.time() - t0)
+        format_result(result, "Data staging")
+    except Exception as e:
+        log_command_end("dataset:stage", operation_id, {"success": False, "error": str(e)}, time.time() - t0)
+        typer.echo(f"❌ Staging failed: {e}", err=True)
+        raise typer.Exit(1) from e
+```
+
+### Example 3: Command with Optional File Argument
+
+```python
+@app.command("stage")
+def stage_cmd(
+    file: Annotated[Path | None, typer.Option(help="Specific file to process")] = None,
+    dry_run: Annotated[bool, typer.Option(help="Preview without executing")] = False,
+):
+    """Stage transaction files to Google Sheets."""
+    operation_id = generate_operation_id("transactions_stage")
+    t0 = time.time()
+    
+    log_command_start("transactions:stage", {
+        "file": str(file) if file else None,
+        "dry_run": dry_run
+    }, operation_id)
+    
+    if dry_run:
+        typer.echo("🔍 Dry-run: Previewing...")
+        if file:
+            typer.echo(f"  Would process: {file.name}")
+        else:
+            count = len(get_all_files())
+            typer.echo(f"  Would process {count} files")
+        log_command_end("transactions:stage", operation_id, {"success": True, "dry_run": True}, time.time() - t0)
+        return
+
+    typer.echo("📤 Staging transactions...")
+    try:
+        if file:
+            result = stage_single_file(file, operation_id)
+        else:
+            result = stage_all_files(operation_id)
+        
+        log_command_end("transactions:stage", operation_id, result, time.time() - t0)
+        format_result(result, "Transaction staging")
+    except Exception as e:
+        log_command_end("transactions:stage", operation_id, {"success": False, "error": str(e)}, time.time() - t0)
+        typer.echo(f"❌ Staging failed: {e}", err=True)
+        raise typer.Exit(1) from e
+```
+
+## Checklist for New CLI Commands
+
+When creating a new CLI command, verify:
+
+- [ ] Imports include: `time`, `generate_operation_id`, `log_command_start`, `log_command_end`
+- [ ] Generate `operation_id` at top of function
+- [ ] Initialize `t0 = time.time()` for timing
+- [ ] Call `log_command_start()` with command name and args
+- [ ] Pass `operation_id` to business function
+- [ ] Call `log_command_end()` on success
+- [ ] Call `log_command_end()` on error (in except block)
+- [ ] User sees friendly console output (emojis, clear messages)
+- [ ] Errors use `err=True` and raise `typer.Exit(1)`
+
+## Cross-References
+
+- **Rule 603**: CLI Audit Trail - explains why we log commands
+- **Rule 610**: Operation ID Tracing - explains operation_id format
+- **Rule 620**: CLI Output Standards - explains console output patterns
+- **Rule 621**: Error Handling Patterns - explains error handling strategy

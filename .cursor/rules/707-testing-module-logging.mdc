@@ -1,0 +1,192 @@
+---
+description: Patterns for mocking logs in tests to avoid file I/O and focus on business logic
+globs:
+  - "tests/**/*.py"
+  - "!tests/cli/**/*.py"
+alwaysApply: false
+---
+
+# Mocking Logs in Tests
+
+**Philosophy**: Logging is infrastructure. Tests should focus on business logic, not logging behavior.
+
+**When to mock logs:**
+- ✅ Always in CLI tests (avoid file I/O)
+- ✅ In module tests when logs would clutter output
+- ✅ When testing error handling (verify error logged, but don't test log content)
+
+**When to test logs (rare):**
+- Only for critical audit trails
+- Only when logging IS the business logic (e.g., audit trail generator)
+- See "Advanced: Testing Log Content" section
+
+**Note**: For CLI audit logging mocks, see **Rule 701: CLI Testing Patterns**. For module logging implementation, see **Rule 602: Module Logging Patterns**.
+
+## Pattern 1: Suppress Logs (Recommended)
+
+For most tests, suppress log output to keep test output clean:
+
+```python
+import logging
+
+def test_function_processes_files(tmp_path, caplog):
+    """Test file processing logic without log noise."""
+    # Suppress all logs during test
+    caplog.set_level(logging.CRITICAL)
+    
+    # Test focuses on business logic
+    result = module.process_files(tmp_path)
+    assert result["succeeded"] == 5
+    # No need to check logs - trust logging infrastructure works
+```
+
+## Pattern 2: Mock Logger (When You Don't Care About Logs)
+
+Mock the logger entirely to avoid any logging overhead:
+
+```python
+def test_function_business_logic(mocker):
+    """Test business logic without any logging."""
+    # Mock logger to avoid file I/O
+    mocker.patch("manchego.receipts.preprocess.logger")
+    
+    # Test focuses purely on business logic
+    result = preprocess.preprocess_all(limit=10)
+    assert result["total"] == 10
+```
+
+## Pattern 3: Verify Error Was Logged (Without Testing Content)
+
+For error handling tests, verify error was logged but don't test exact message:
+
+```python
+import logging
+
+def test_function_logs_error_on_failure(caplog, mocker):
+    """Verify function logs errors when processing fails."""
+    caplog.set_level(logging.ERROR)
+    
+    # Mock to cause error
+    mocker.patch("manchego.receipts.preprocess._normalize_to_jpeg", 
+                 side_effect=Exception("Processing error"))
+    
+    # Function should handle error gracefully
+    result = preprocess.preprocess_one(Path("test.jpg"))
+    
+    # Verify error was logged (any ERROR-level log is fine)
+    assert len([r for r in caplog.records if r.levelname == "ERROR"]) >= 1
+    # Don't test exact message - that's implementation detail
+```
+
+## Advanced: Testing Log Content (Rare)
+
+Only test log content for critical audit trails:
+
+```python
+import logging
+
+def test_audit_trail_logs_operation_id(caplog):
+    """RARE: Test critical audit trail includes operation_id."""
+
+```python
+    import logging
+    caplog.set_level(logging.INFO)
+    
+    result = audit_function(operation_id="audit_123")
+    
+    # For critical audit trails, verify specific content
+    audit_logs = [r for r in caplog.records if "audit" in r.message.lower()]
+    assert any("operation_id" in str(r.__dict__) for r in audit_logs)
+```
+
+**99% of tests should use Pattern 1, 2, or 3 above. Only use this for truly critical scenarios.**
+
+## When to Use Each Pattern
+
+**Use Pattern 1 (Suppress)** when:
+- Test focuses on business logic
+- Logs would clutter test output
+- You trust logging infrastructure
+
+**Use Pattern 2 (Mock Logger)** when:
+- You want zero logging overhead
+- Testing pure business logic
+- Logs are completely irrelevant
+
+**Use Pattern 3 (Verify Error Logged)** when:
+- Testing error handling
+- Want to ensure errors are visible in logs
+- Don't care about exact message
+
+**Use Advanced (Test Content)** when:
+- Critical audit trail
+- Logging IS the business logic
+- Compliance/security requirement
+
+## Deprecated: Old "Testing Log Content" Examples
+
+The following examples were in the original Rule 707 but are **NOT RECOMMENDED** for most tests. They test logging infrastructure instead of business logic:
+
+<details>
+<summary>Click to see deprecated examples (don't use these)</summary>
+
+```python
+def test_function__basic_smoke(caplog):
+    """Quick check that function runs and logs something."""
+    import logging
+    caplog.set_level(logging.INFO)
+    
+    result = module.function(operation_id="test")
+    
+    # Just verify SOME logging happened
+    assert len(caplog.records) > 0
+    
+    # Verify operation_id in at least one log
+    assert any(hasattr(r, 'operation_id') for r in caplog.records)
+```
+
+## Common Patterns
+
+### Pattern 1: Verify operation_id Auto-Generation
+```python
+# Function should generate operation_id if None
+result = function(operation_id=None)
+assert any(hasattr(r, 'operation_id') for r in caplog.records)
+```
+
+### Pattern 2: Verify operation_id Consistency
+```python
+# All logs should have same operation_id
+result = function(operation_id="test_123")
+op_ids = [r.operation_id for r in caplog.records if hasattr(r, 'operation_id')]
+assert all(op_id == "test_123" for op_id in op_ids)
+```
+
+### Pattern 3: Verify Log Level
+```python
+# Errors should be at ERROR level
+error_logs = [r for r in caplog.records if r.levelname == "ERROR"]
+assert len(error_logs) == expected_count
+```
+
+### When NOT to Test Logging
+
+Skip logging tests for:
+- Simple utility functions
+- Functions that don't process multiple items
+- Functions with minimal logging
+- Quick helper functions
+
+**Focus testing on business logic. Logging is infrastructure.**
+
+</details>
+
+## Required Reading
+
+- **Rule 700**: Testing Standards - foundation for all testing
+
+## See Also
+
+- Rule 602: Module Logging Patterns - implementation pattern being tested
+- Rule 610: Operation ID Tracing - operation_id details (if testing operation_id behavior)
+- Rule 701: CLI Testing Patterns - for testing CLI audit logging (different from module logs)

@@ -1,0 +1,146 @@
+---
+description: Centralized logging configuration with JSON format and operation tracing for machine-readable logs
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Logging Configuration Standards
+
+- Use `setup_logger(__name__, log_subdir="domain")` for all modules where domain matches the module's top-level package (receipts, ledger, time, database, etc.)
+- Logs default to JSON format for machine readability (critical for AI agent debugging)
+- All log entries MUST include operation_id when available for tracing
+- Log files mirror source code structure: `data/logs/receipts/preprocess.log` for `manchego/receipts/preprocess.py`
+- Console output (when enabled) uses human-readable text format
+- File logs use JSON format with standard schema (see rule 605)
+
+## Log Directory Structure
+
+```
+data/logs/
+├── cli/
+│   └── commands.log          # CLI audit trail (JSON)
+├── receipts/
+│   ├── preprocess.log         # JSON logs per module
+│   ├── stage.log
+│   └── parse_gpt.log
+├── ledger/
+│   └── stage_statements.log
+├── time/
+│   ├── geofency.log
+│   ├── rescuetime.log
+│   └── screentime.log
+├── database/
+│   └── loaders/
+│       ├── receipts.log
+│       └── transactions.log
+└── [other domains...]
+```
+
+## Setup Pattern
+
+❌ **Avoid:**
+```python
+import logging
+logger = logging.getLogger(__name__)
+```
+
+✅ **Prefer:**
+```python
+from manchego.utils.logging_config import setup_logger
+
+logger = setup_logger(__name__, log_subdir="receipts")
+```
+
+## Operation ID Usage
+
+All logs for a single operation (e.g., CLI command, batch process) should include the same operation_id:
+
+```python
+from manchego.utils.logging_helpers import generate_operation_id
+
+operation_id = generate_operation_id("stage_receipts")
+logger.info("Starting operation", extra={"operation_id": operation_id})
+# All subsequent logs include operation_id
+```
+
+## Log Rotation & Retention
+
+Automatic log rotation prevents log files from growing indefinitely and manages disk space efficiently.
+
+### Time-Based Rotation
+
+- **Rotate daily** at midnight
+- **Keep 30 days** of history
+- **Archive format**: `{module}_{YYYYMMDD}.log`
+
+Example:
+```
+data/logs/receipts/
+├── preprocess.log              # Current (active)
+├── preprocess_20251011.log     # Yesterday
+├── preprocess_20251010.log     # 2 days ago
+└── preprocess_20250912.log     # 30 days ago (will be deleted tonight)
+```
+
+### Configuration in logging_config.py
+
+Log rotation is configured automatically in `manchego/utils/logging_config.py`:
+
+```python
+from logging.handlers import TimedRotatingFileHandler
+
+file_handler = TimedRotatingFileHandler(
+    log_file,
+    when='midnight',      # Rotate at midnight
+    interval=1,           # Every day
+    backupCount=30,       # Keep 30 days
+    encoding='utf-8'
+)
+```
+
+Adjust retention period if needed:
+```python
+backupCount=30    # Keep 30 days (default)
+backupCount=90    # Keep 90 days (for audit requirements)
+backupCount=7     # Keep 7 days (for development/testing)
+```
+
+### Storage Estimates
+
+Typical log volumes:
+- High-traffic operations (receipts, transactions): ~1-5 MB/day
+- Medium-traffic (time tracking): ~100-500 KB/day
+- Low-traffic (utils, vendors): ~10-50 KB/day
+
+**Total estimate**: ~10-20 MB/day across all modules  
+**30-day total**: ~300-600 MB
+
+### Monitoring Log Size
+
+```bash
+# Show total log directory size
+du -sh data/logs/
+
+# Show size per module
+du -sh data/logs/*/
+
+# List largest log files
+find data/logs -name "*.log" -exec ls -lh {} \; | sort -k5 -rh | head -20
+```
+
+### Accessing Archived Logs
+
+Archived logs remain accessible:
+
+```bash
+# Read archived log
+cat data/logs/receipts/preprocess_20251010.log
+
+# Search across all logs (current + archived)
+jq 'select(.level == "ERROR")' data/logs/receipts/*.log
+
+# Search specific date
+jq 'select(.operation_id == "receipts_stage_20251010_120000_a3d5e8f4")' \
+   data/logs/receipts/preprocess_20251010.log
+```

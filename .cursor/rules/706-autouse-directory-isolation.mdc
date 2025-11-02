@@ -1,0 +1,136 @@
+---
+description: Autouse fixture pattern for test data directory isolation
+globs:
+  - ["tests/**/*.py"]
+alwaysApply: false
+---
+
+# Autouse Fixture for Directory Isolation
+
+## Pattern
+
+- Create module-level autouse fixture to redirect ALL data directories to `tmp_path`
+- Fixture should be comprehensive: redirect input AND output directories
+- Name fixture with leading underscore to indicate it's infrastructure: `_redirect_*_dirs`
+- Document which directories are redirected in the docstring
+
+## Required Redirections
+
+### Identify All Directories
+For each module under test, identify:
+1. **Input directories**: Where does it READ from? (`*_RAW_DIR`, `*_PROCESSED_DIR`)
+2. **Output directories**: Where does it WRITE to? (`*_STAGED_DIR`, `*_BACKUP_DIR`, `*_PROCESSED_DIR`)
+3. **Both**: Some directories are both input and output
+
+### Redirect Comprehensively
+- Redirect in ALL modules that reference the constant
+- Create subdirectories with `mkdir(parents=True, exist_ok=True)`
+- Use `monkeypatch.setattr()` to replace constants
+- Return dict with paths for test debugging if needed
+
+## Template
+
+```python
+@pytest.fixture(autouse=True)
+def _redirect_module_dirs(tmp_path, monkeypatch):
+    """
+    Redirect all module directories to tmp_path to prevent touching real data.
+    This fixture runs automatically for all tests in this module.
+    
+    Redirects:
+    - MODULE_RAW_DIR (input)
+    - MODULE_STAGED_DIR (output)
+    - MODULE_PROCESSED_DIR (input/output)
+    """
+    from manchego import global_config
+    from manchego.domain import module
+    
+    # Create directories
+    raw_dir = tmp_path / "domain" / "raw"
+    staged_dir = tmp_path / "domain" / "staged"
+    
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    staged_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Redirect in all relevant modules
+    monkeypatch.setattr(module, "MODULE_RAW_DIR", raw_dir)
+    monkeypatch.setattr(module, "MODULE_STAGED_DIR", staged_dir)
+    monkeypatch.setattr(global_config, "MODULE_RAW_DIR", raw_dir)
+    
+    return {"raw": raw_dir, "staged": staged_dir}
+```
+
+## Benefits
+
+1. **Defense in depth**: Even if tests pass explicit `root=` params, defaults are safe
+2. **Consistency**: All tests in module automatically protected
+3. **Less duplication**: No need to redirect in every test
+4. **Clear intent**: Fixture name and docstring document isolation strategy
+
+## Examples
+
+✅ **Good pattern (from test_geofency.py):**
+```python
+@pytest.fixture(autouse=True)
+def _redirect_geofency_dirs(tmp_path, monkeypatch):
+    """
+    Redirect all Geofency directories to tmp_path to prevent touching real data.
+    This fixture runs automatically for all tests in this module.
+    """
+    raw_dir = tmp_path / "geofency" / "raw"
+    staged_dir = tmp_path / "geofency" / "staged"
+    
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    staged_dir.mkdir(parents=True, exist_ok=True)
+    
+    monkeypatch.setattr(geofency, "GEOFENCY_RAW_DIR", raw_dir)
+    monkeypatch.setattr(geofency, "GEOFENCY_STAGED_DIR", staged_dir)
+    
+    return {"raw": raw_dir, "staged": staged_dir}
+```
+
+✅ **Good pattern (from test_preprocess.py):**
+```python
+@pytest.fixture(autouse=True)
+def _redirect_all_receipt_dirs(tmp_path, monkeypatch):
+    """
+    Redirect all receipt directories to tmp_path to prevent touching real data.
+    
+    Redirects:
+    - RAW_RECEIPTS_DIR (input)
+    - PROCESSED_RECEIPTS_DIR (output)
+    - RAW_RECEIPTS_BACKUP_DIR (output)
+    """
+    from manchego import global_config
+    from manchego.receipts import intake
+    
+    raw_dir = tmp_path / "receipts" / "raw"
+    processed_dir = tmp_path / "receipts" / "processed"
+    backup_dir = tmp_path / "receipts" / "raw" / "backup"
+    
+    for d in (raw_dir, processed_dir, backup_dir):
+        d.mkdir(parents=True, exist_ok=True)
+    
+    monkeypatch.setattr(global_config, "RAW_RECEIPTS_DIR", raw_dir)
+    monkeypatch.setattr(intake, "RAW_RECEIPTS_DIR", raw_dir)
+    monkeypatch.setattr(preprocess, "PROCESSED_RECEIPTS_DIR", processed_dir)
+    monkeypatch.setattr(preprocess, "RAW_RECEIPTS_BACKUP_DIR", backup_dir)
+    
+    return {"raw": raw_dir, "processed": processed_dir, "backup": backup_dir}
+```
+
+## Verification
+
+After creating autouse fixture:
+- Run tests: `pytest tests/module/test_file.py -v`
+- Check data isolation: `git status data/` should show no changes
+- Verify autouse is working: Temporarily break redirect, tests should fail
+
+## Required Reading
+
+- **Rule 705**: Test Data Isolation - understand what needs to be isolated before implementing autouse fixtures
+
+## See Also
+
+- Rule 700: Testing Standards - complete test file template showing autouse fixture usage
+- Rule 702: Test Isolation and Mocking - isolation requirements and patterns

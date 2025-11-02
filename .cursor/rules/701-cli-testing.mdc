@@ -1,0 +1,244 @@
+---
+description: CLI testing patterns focusing on command parsing and user output validation
+globs:
+  - "tests/cli/**/*.py"
+alwaysApply: false
+---
+
+# CLI Testing Patterns
+
+**Note**: For complete CLI command implementation patterns, see **Rule 612: CLI Command Pattern**. For mocking consistency, see **Rule 704: CLI Mocking Consistency**.
+
+## CLI Test Scope
+
+- Command argument parsing and validation
+- User output formatting and progress indicators  
+- CLI-level error handling and exception catching
+- CLI audit logging (verify log_command_start/end called)
+- Operation ID generation and propagation
+- Command wiring and subcommand availability
+- Standard CLI patterns (`--help`, `--version`, argument types)
+
+## What CLI Tests Should NOT Do
+
+- Test business logic implementation details
+- Test low-level processing algorithms  
+- Test module internals and private functions
+- Duplicate business logic tests with CLI wrappers
+- Test JSON log content (that's tested in module tests)
+
+## Mocking Strategy
+
+- Mock business logic functions at their import location (see Rule 704)
+- Mock external dependencies (Google Sheets, OpenAI API)
+- Mock CLI audit functions when testing specific behaviors
+- Test CLI interface, not business implementation
+
+## Examples
+
+### Example 1: Testing Command with operation_id Propagation
+
+New CLI commands generate operation_id and pass to business functions. Test that this happens:
+
+```python
+from typer.testing import CliRunner
+
+def test_receipts_process__propagates_operation_id(mocker):
+    """Verify CLI command generates operation_id and passes to business function."""
+    # Mock the business function
+    mock_process = mocker.patch("manchego.cli.receipts.preprocess_all")
+    mock_process.return_value = {"success": True, "total": 5, "succeeded": 5, "failed": 0}
+    
+    # Mock operation_id generation to control the value
+    mock_generate_id = mocker.patch("manchego.cli.receipts.generate_operation_id")
+    mock_generate_id.return_value = "receipts_process_20251011_120000_test1234"
+    
+    # Run command
+    runner = CliRunner()
+    result = runner.invoke(app, ["process", "--limit", "5"])
+    
+    # Verify success
+    assert result.exit_code == 0
+    
+    # Verify operation_id was generated
+    mock_generate_id.assert_called_once_with("receipts_process")
+    
+    # Verify operation_id was passed to business function
+    mock_process.assert_called_once_with(
+        limit=5,
+        recurse=False,
+        force=False,
+        operation_id="receipts_process_20251011_120000_test1234"
+    )
+```
+
+### Example 2: Testing CLI Audit Logging
+
+Verify that CLI commands log to the audit trail:
+
+```python
+def test_receipts_stage__logs_to_audit_trail(mocker):
+    """Verify CLI command logs start and end to audit trail."""
+    # Mock business function
+    mock_stage = mocker.patch("manchego.cli.receipts.stage_receipts_to_sheet")
+    mock_stage.return_value = {"success": True, "total": 10, "succeeded": 10, "failed": 0}
+    
+    # Mock audit logging
+    mock_log_start = mocker.patch("manchego.cli.receipts.log_command_start")
+    mock_log_end = mocker.patch("manchego.cli.receipts.log_command_end")
+    
+    # Mock operation_id generation
+    mock_generate_id = mocker.patch("manchego.cli.receipts.generate_operation_id")
+    mock_generate_id.return_value = "test_operation_id"
+    
+    # Run command
+    runner = CliRunner()
+    result = runner.invoke(app, ["stage", "--limit", "10"])
+    
+    assert result.exit_code == 0
+    
+    # Verify audit logging called
+    mock_log_start.assert_called_once_with(
+        "receipts:stage",
+        {"limit": 10, "recurse": False, "dry_run": False},
+        "test_operation_id"
+    )
+    
+    # Verify end logged with result and timing
+    assert mock_log_end.call_count == 1
+    call_args = mock_log_end.call_args[0]
+    assert call_args[0] == "receipts:stage"
+    assert call_args[1] == "test_operation_id"
+    assert call_args[2] == {"success": True, "total": 10, "succeeded": 10, "failed": 0}
+    # call_args[3] is elapsed_s - just verify it was called
+```
+
+### Example 3: Testing Business Function Mock with operation_id
+
+When mocking business functions that now accept operation_id:
+
+```python
+def test_transactions_stage__passes_operation_id_to_business_function(mocker):
+    """Verify operation_id is passed to business function."""
+    # Mock business function (now accepts operation_id parameter)
+    mock_stage_all = mocker.patch("manchego.cli.transactions.stage_all_statements")
+    mock_stage_all.return_value = {"success": True, "total": 3, "succeeded": 3, "failed": 0}
+    
+    # Mock operation_id
+    mock_generate_id = mocker.patch("manchego.cli.transactions.generate_operation_id")
+    mock_generate_id.return_value = "transactions_stage_test"
+    
+    # Mock audit logging (to avoid errors)
+    mocker.patch("manchego.cli.transactions.log_command_start")
+    mocker.patch("manchego.cli.transactions.log_command_end")
+    
+    runner = CliRunner()
+    result = runner.invoke(app, ["stage"])
+    
+    assert result.exit_code == 0
+    
+    # Verify business function called WITH operation_id
+    mock_stage_all.assert_called_once_with("transactions_stage_test")
+```
+
+### Example 4: OLD Pattern (for reference)
+
+❌ **Avoid (testing business logic in CLI test):**
+```python
+def test_receipts_preprocess_processing_logic():
+    result = receipts_cli.preprocess_command(limit=5)
+    assert result.created == 3  # Testing business logic in CLI test
+```
+
+✅ **Prefer (testing CLI interface only):**
+```python
+def test_receipts_preprocess__accepts_limit_option(mocker):
+    mock_process = mocker.patch("manchego.cli.receipts.preprocess_all")
+    mock_process.return_value = {"success": True, "total": 2, "succeeded": 2, "failed": 0}
+    
+    # Mock audit logging
+    mocker.patch("manchego.cli.receipts.generate_operation_id", return_value="test_id")
+    mocker.patch("manchego.cli.receipts.log_command_start")
+    mocker.patch("manchego.cli.receipts.log_command_end")
+    
+    runner = CliRunner()
+    result = runner.invoke(app, ["process", "--limit", "5"])
+    
+    assert result.exit_code == 0
+    assert "2" in result.output  # Check output formatting
+    mock_process.assert_called_once()  # Verify called
+```
+
+## Example 5: Reusable CLI Audit Fixture (RECOMMENDED)
+
+To avoid repeating 3 lines of mocking in every CLI test, create a reusable fixture:
+
+**Create in conftest.py or test file:**
+
+```python
+import pytest
+
+@pytest.fixture
+def mock_cli_audit(mocker):
+    """
+    Mock CLI audit logging for all commands.
+    
+    Returns mocker for additional mocking in tests.
+    Use this fixture in any CLI test to avoid boilerplate.
+    """
+    mocker.patch("manchego.cli.receipts.generate_operation_id", return_value="test_op_id")
+    mocker.patch("manchego.cli.receipts.log_command_start")
+    mocker.patch("manchego.cli.receipts.log_command_end")
+    return mocker
+```
+
+**Usage (much cleaner!):**
+
+```python
+def test_receipts_process__with_limit(mock_cli_audit):
+    """Test process command with limit option."""
+    # Audit logging already mocked by fixture!
+    mock_business = mock_cli_audit.patch("manchego.cli.receipts.preprocess_all")
+    mock_business.return_value = {"success": True, "total": 5, "succeeded": 5, "failed": 0}
+    
+    runner = CliRunner()
+    result = runner.invoke(app, ["process", "--limit", "5"])
+    
+    assert result.exit_code == 0
+    # Verify business function called with operation_id
+    mock_business.assert_called_once_with(limit=5, recurse=False, force=False, operation_id="test_op_id")
+```
+
+**For multiple commands in same file:**
+
+```python
+# Create module-specific fixture in conftest.py
+@pytest.fixture
+def mock_receipts_audit(mocker):
+    """Mock audit logging for receipts CLI commands."""
+    mocker.patch("manchego.cli.receipts.generate_operation_id", return_value="test_op_id")
+    mocker.patch("manchego.cli.receipts.log_command_start")
+    mocker.patch("manchego.cli.receipts.log_command_end")
+    return mocker
+
+@pytest.fixture
+def mock_transactions_audit(mocker):
+    """Mock audit logging for transactions CLI commands."""
+    mocker.patch("manchego.cli.transactions.generate_operation_id", return_value="test_op_id")
+    mocker.patch("manchego.cli.transactions.log_command_start")
+    mocker.patch("manchego.cli.transactions.log_command_end")
+    return mocker
+```
+
+**Value:** Reduces 3 lines per test to 1 fixture parameter. In a file with 20 tests, saves 60 lines of boilerplate!
+
+## Required Reading
+
+- **Rule 700**: Testing Standards - foundation for all testing (understand test types first)
+- **Rule 704**: CLI Mocking Consistency - where to mock imports (critical for CLI tests)
+
+## See Also
+
+- Rule 612: CLI Command Pattern - implementation pattern being tested
+- Rule 706: Autouse Directory Isolation - automatic directory isolation for tests
+- Rule 708: Test Migration Patterns - how to update these tests during refactors

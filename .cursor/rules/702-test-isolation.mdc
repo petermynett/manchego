@@ -1,0 +1,79 @@
+---
+description: Test isolation and mocking patterns for external dependencies
+globs:
+  - ["tests/**/*.py"]
+alwaysApply: false
+---
+
+# Test Isolation and Mocking
+
+## Mocking by Test Level
+
+**Business Logic Tests:**
+```python
+# Mock external APIs and services
+@mocker.patch("manchego.receipts.parse_gpt.OpenAI")
+@mocker.patch("manchego.google.sheets.build")
+```
+
+**CLI Domain Tests:**
+```python
+# Mock business logic functions
+@mocker.patch("manchego.receipts.preprocess.preprocess_all")
+@mocker.patch("manchego.time.rescuetime.fetch_and_stage_rescuetime")
+```
+
+**CLI Integration Tests:**
+```python
+# Mock app imports minimally
+@mocker.patch("manchego.cli.receipts.receipts_app")
+```
+
+## Isolation Requirements
+
+- **File I/O**: Use `tmp_path` for ALL file operations (see rule 705 for path redirection)
+- **Network**: Mock all network calls and external APIs
+- **Services**: Use `fake_sheets`, `fake_openai_factory` fixtures
+- **APIs**: No real API calls during tests (expensive, slow, flaky)
+
+## What to Mock vs Redirect
+
+**Mock:** Functions that perform expensive operations or have side effects
+```python
+@mocker.patch("module.move_to_staged")  # Mock file-moving function
+@mocker.patch("module.stage_to_sheets")  # Mock Google Sheets upload
+```
+
+**Redirect:** Directory constants to keep tests isolated
+```python
+monkeypatch.setattr(module, "RAW_DIR", tmp_path / "raw")
+monkeypatch.setattr(module, "STAGED_DIR", tmp_path / "staged")
+```
+
+## Examples
+
+❌ **Avoid:**
+```python
+def test_process():
+    result = process_receipt("data/raw/receipts/test.jpg")  # Real files
+    api_client = OpenAI()  # Real API call
+```
+
+✅ **Prefer:**
+```python
+def test_process__handles_api_error(tmp_path, touch, mocker):
+    img = touch(tmp_path / "test.jpg", b"fake-data")
+    mocker.patch("manchego.receipts.parse_gpt.OpenAI", side_effect=Exception("API down"))
+    
+    result = parse_receipt(img)
+    assert result.status == "error"
+```
+
+## Required Reading
+
+- **Rule 700**: Testing Standards - foundation for all testing
+
+## See Also
+
+- Rule 705: Test Data Isolation - specific path redirection strategies
+- Rule 706: Autouse Directory Isolation - automatic isolation using autouse fixtures

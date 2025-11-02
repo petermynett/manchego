@@ -1,0 +1,225 @@
+---
+description: Clear separation between file logs (JSON, machine-readable) and console output (text, human-readable)
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Console vs File Logging
+
+Manchego separates file logging (machine-readable JSON for agents) from console output (human-readable text for users).
+
+**Configuration Details**: See Rule 600 for `setup_logger()` configuration and Rule 620 for CLI console output patterns.
+
+## File Logs (JSON Format)
+
+**Location**: `data/logs/{module}/{file}.log`
+
+**Format**: JSON (one log entry per line)
+
+**Purpose**: Machine-readable logs for AI agents, monitoring, and debugging
+
+**Example**:
+```json
+{"timestamp": "2025-10-11T18:20:01.234Z", "level": "INFO", "module": "manchego.receipts.stage", "operation_id": "receipts_stage_20251011_182001_a3d5e8f4", "message": "Staged receipt successfully", "data": {"file": "receipt_001.jpg", "rows": 12}}
+```
+
+**When**: ALL module operations log to files
+
+**Configuration**:
+```python
+logger = setup_logger(__name__, log_subdir="receipts", console_output=False)
+```
+
+## Console Output (Human-Readable)
+
+**Location**: stdout/stderr
+
+**Format**: Human-readable text with emojis
+
+**Purpose**: User-friendly output for CLI interactions
+
+**Example**:
+```
+🔄 Starting receipt preprocessing...
+✅ Created 44 processed receipts
+⚠️  2 files failed (check logs for details)
+⏱️  Total time: 2.3s
+```
+
+**When**: ONLY CLI commands output to console
+
+**Configuration**: Uses `typer.echo()`, not logging
+
+## Separation of Concerns
+
+### Module Functions (Business Logic)
+
+**DO**:
+- ✅ Log to files (JSON format)
+- ✅ Return structured dicts
+- ✅ Use logger for all output
+
+**DON'T**:
+- ❌ Use print()
+- ❌ Use typer.echo()
+- ❌ Write to console
+- ❌ Enable console_output in logger
+
+```python
+# In manchego/receipts/preprocess.py
+logger = setup_logger(__name__, log_subdir="receipts")  # console_output=False (default)
+
+def preprocess_all() -> dict:
+    """Preprocess receipts. Returns structured dict."""
+    operation_id = generate_operation_id("preprocess_receipts")
+    
+    # Logs go to file only
+    logger.info("Starting preprocessing", extra={"operation_id": operation_id})
+    
+    # Return structured data (no console output)
+    return {
+        "success": True,
+        "total": 50,
+        "succeeded": 44,
+        "failed": 6
+    }
+```
+
+### CLI Commands
+
+**DO**:
+- ✅ Use typer.echo() for console
+- ✅ Format results for humans
+- ✅ Log command invocations to CLI audit trail
+- ✅ Show emojis and user-friendly messages
+
+**DON'T**:
+- ❌ Log operational details (that's for modules)
+- ❌ Duplicate module logs to console
+
+```python
+# In manchego/cli/receipts.py
+@app.command("process")
+def process_cmd(limit: int | None = None):
+    """Process raw receipt images."""
+    operation_id = generate_operation_id("receipts_process")
+    
+    # CLI audit log (to file)
+    log_command_start("receipts:process", {"limit": limit}, operation_id)
+    
+    # Console output (for user)
+    typer.echo("🔄 Processing receipts...")
+    
+    try:
+        result = preprocess_all(operation_id=operation_id)  # Module logs to file
+        
+        # Format result for console
+        if result['succeeded'] > 0:
+            typer.echo(f"✅ Created {result['succeeded']} processed receipts")
+        if result['failed'] > 0:
+            typer.echo(f"⚠️  {result['failed']} files failed (check logs for details)")
+        
+        # CLI audit log completion
+        log_command_end("receipts:process", operation_id, result, elapsed_s)
+        
+    except Exception as e:
+        typer.echo(f"❌ Processing failed: {e}", err=True)
+        raise typer.Exit(1)
+```
+
+## Console Output in Development
+
+For debugging, you CAN temporarily enable console output in modules:
+
+```python
+# Temporary for debugging
+logger = setup_logger(__name__, log_subdir="receipts", console_output=True)
+```
+
+But NEVER commit this. Production code should have `console_output=False` (default).
+
+## CLI Audit Trail (Special Case)
+
+CLI commands are logged to `data/logs/cli/commands.log`:
+
+- **Format**: JSON (like other file logs)
+- **Purpose**: Audit trail of what commands were run
+- **Separate from console**: Users don't see this, but it's logged for agents
+
+```python
+# CLI audit logger (in cli_audit.py)
+cli_logger = setup_logger("manchego.cli.commands", log_subdir="cli", console_output=False)
+```
+
+## Error Output
+
+Errors go to both file logs AND console:
+
+**In modules**:
+```python
+try:
+    process_file(file)
+except Exception as e:
+    # Log to file with full context
+    log_file_failure(logger, file.name, operation_id, e, file_path=str(file))
+    # Don't write to console (module doesn't know if it's CLI or batch)
+```
+
+**In CLI**:
+```python
+try:
+    result = process_files()
+except Exception as e:
+    # Show user-friendly error on console
+    typer.echo(f"❌ Processing failed: {e}", err=True)
+    # Full details are in the file logs
+    raise typer.Exit(1)
+```
+
+## Comparison Table
+
+| Aspect | File Logs | Console Output |
+|--------|-----------|----------------|
+| **Format** | JSON | Human-readable text |
+| **Audience** | AI agents, developers | End users |
+| **Location** | `data/logs/` | stdout/stderr |
+| **Level of detail** | Full (all operations) | Summary (successes/failures) |
+| **Machine-readable** | Yes (critical) | No |
+| **Human-friendly** | No (verbose JSON) | Yes (emojis, colors) |
+| **Used in** | All modules | CLI commands only |
+| **Configuration** | `setup_logger()` | `typer.echo()` |
+
+## Debugging Strategy
+
+When things go wrong:
+
+1. **User sees**: Human-friendly error on console
+   ```
+   ❌ Processing failed: Invalid file format
+   ```
+
+2. **Developer checks**: Detailed JSON logs
+   ```json
+   {"level": "ERROR", "operation_id": "receipts_process_...", "data": {"file": "receipt_corrupt.jpg", "file_path": "/full/path/to/file"}, "error": {"type": "PIL.UnidentifiedImageError", "message": "cannot identify image file", "traceback": "..."}}
+   ```
+
+3. **Agent traces**: All logs for operation_id
+   ```bash
+   jq 'select(.operation_id == "receipts_process_20251011_182001_a3d5e8f4")' data/logs/**/*.log
+   ```
+
+## Quick Reference
+
+| Aspect | File Logs | Console Output |
+|--------|-----------|----------------|
+| **Format** | JSON | Human-readable text |
+| **Audience** | AI agents, developers | End users |
+| **Location** | `data/logs/` | stdout/stderr |
+| **Detail** | All operations | Summary only |
+| **Machine-readable** | Yes (critical) | No |
+| **Human-friendly** | No | Yes (emojis, colors) |
+| **Who uses** | All modules | CLI commands only |
+| **Configuration** | `setup_logger()` | `typer.echo()` |
+
+**For implementation details**: See Rule 600 (logging configuration) and Rule 620 (CLI output standards).

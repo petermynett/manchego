@@ -1,0 +1,258 @@
+---
+description: Performance metrics logging to identify bottlenecks and track operation efficiency
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Performance Logging
+
+Log performance metrics for operations to identify bottlenecks, track trends, and optimize system performance.
+
+## When to Add Performance Logging
+
+**Always include:**
+- ✅ Operation duration (`elapsed_s`) - REQUIRED for all batch operations
+- ✅ Total items processed - Already in rule 605 structure
+
+**Add when relevant:**
+- File/data sizes for I/O operations
+- Row/record counts for data transformations
+- API call counts for external service usage
+- Throughput metrics for batch operations
+
+**Add when investigating performance issues:**
+- Per-item timing for operations with high variance
+- Memory usage for large dataset processing
+- Database query timing
+
+**Rule of thumb**: If an operation takes > 1 second, log its duration. If you're debugging slowness, add detailed metrics.
+
+## Required Metrics
+
+### Operation Duration
+
+Always log total elapsed time for operations:
+
+```python
+import time
+
+start_time = time.time()
+
+# ... operation code ...
+
+elapsed_s = time.time() - start_time
+
+logger.info("Operation complete", extra={
+    "operation_id": operation_id,
+    "data": {
+        "total": len(items),
+        "succeeded": succeeded_count,
+        "failed": failed_count
+    },
+    "elapsed_s": elapsed_s  # Always include
+})
+```
+
+### File Sizes
+
+Log file sizes when processing files:
+
+```python
+logger.info("Processing file", extra={
+    "operation_id": operation_id,
+    "data": {
+        "file": file.name,
+        "size_bytes": file.stat().st_size,
+        "size_mb": round(file.stat().st_size / 1024 / 1024, 2)
+    }
+})
+```
+
+### Record Counts
+
+Log counts of records/rows processed:
+
+```python
+logger.info("Data transformation complete", extra={
+    "operation_id": operation_id,
+    "data": {
+        "input_rows": len(df_raw),
+        "output_rows": len(df_clean),
+        "dropped_rows": len(df_raw) - len(df_clean)
+    }
+})
+```
+
+### API Call Counts
+
+Log external API usage:
+
+```python
+logger.info("Staged to Google Sheets", extra={
+    "operation_id": operation_id,
+    "data": {
+        "rows_appended": len(rows),
+        "api_calls": 2,  # get_values + append
+        "sheet_id": sheet_id
+    }
+})
+```
+
+## Batch Operation Summary
+
+Include performance metrics in operation summaries:
+
+```python
+summary = {
+    "success": len(failed) == 0,
+    "total": len(files),
+    "succeeded": len(succeeded),
+    "failed": len(failed),
+    "elapsed_s": elapsed_s,
+    "throughput": {
+        "files_per_sec": round(len(files) / elapsed_s, 2),
+        "mb_per_sec": round(total_mb / elapsed_s, 2)
+    },
+    "total_size_mb": total_mb,
+    "avg_file_size_mb": round(total_mb / len(files), 2)
+}
+
+log_operation_summary(logger, "process_receipts", operation_id, summary)
+```
+
+## Per-Item Timing
+
+For operations with significant per-item variance, log individual timings:
+
+```python
+item_start = time.time()
+
+result = process_item(item)
+
+item_elapsed = time.time() - item_start
+
+# Log if unusually slow
+if item_elapsed > 5.0:
+    logger.warning("Slow item processing", extra={
+        "operation_id": operation_id,
+        "data": {
+            "item": item.name,
+            "elapsed_s": item_elapsed,
+            "threshold_s": 5.0
+        }
+    })
+```
+
+## Database Operations
+
+Log query performance:
+
+```python
+import time
+
+start = time.time()
+cursor.execute(query, params)
+rows = cursor.fetchall()
+elapsed = time.time() - start
+
+logger.debug("Database query executed", extra={
+    "operation_id": operation_id,
+    "data": {
+        "query_type": "SELECT",
+        "table": "receipts",
+        "rows_returned": len(rows),
+        "elapsed_s": elapsed
+    }
+})
+```
+
+## API Rate Limiting
+
+Log API usage to track rate limits:
+
+```python
+logger.info("API call completed", extra={
+    "operation_id": operation_id,
+    "data": {
+        "service": "google_sheets",
+        "endpoint": "append",
+        "status_code": 200,
+        "elapsed_s": elapsed,
+        "rate_limit_used": "45/100 per minute"
+    }
+})
+```
+
+## Memory Usage (for large operations)
+
+For operations processing large datasets:
+
+```python
+import psutil
+import os
+
+process = psutil.Process(os.getpid())
+memory_mb = process.memory_info().rss / 1024 / 1024
+
+logger.debug("Memory usage", extra={
+    "operation_id": operation_id,
+    "data": {
+        "memory_mb": round(memory_mb, 2),
+        "dataframe_rows": len(df),
+        "dataframe_cols": len(df.columns)
+    }
+})
+```
+
+## Performance Analysis Benefits
+
+With structured performance logging, you can:
+
+**Identify bottlenecks:**
+```bash
+# Find slowest operations
+jq 'select(.elapsed_s != null) | {operation: .message, elapsed: .elapsed_s}' logs/**/*.log | sort -k2 -rn | head
+```
+
+**Track throughput:**
+```bash
+# Calculate average throughput
+jq 'select(.data.throughput != null) | .data.throughput.files_per_sec' logs/**/*.log | awk '{sum+=$1; count++} END {print sum/count}'
+```
+
+**Monitor API usage:**
+```bash
+# Count API calls per operation
+jq 'select(.data.api_calls != null) | {operation: .operation_id, calls: .data.api_calls}' logs/**/*.log
+```
+
+**Detect slow items:**
+```bash
+# Find items that took > 5 seconds
+jq 'select(.data.elapsed_s > 5) | {item: .data.item, elapsed: .data.elapsed_s}' logs/**/*.log
+```
+
+## Performance Thresholds
+
+Define and log against performance thresholds:
+
+```python
+THRESHOLDS = {
+    "file_processing_s": 2.0,
+    "api_call_s": 1.0,
+    "batch_operation_s": 30.0
+}
+
+if elapsed_s > THRESHOLDS["file_processing_s"]:
+    logger.warning("Slow file processing", extra={
+        "operation_id": operation_id,
+        "data": {
+            "file": filename,
+            "elapsed_s": elapsed_s,
+            "threshold_s": THRESHOLDS["file_processing_s"]
+        }
+    })
+```
+
+This enables proactive identification of performance degradation.

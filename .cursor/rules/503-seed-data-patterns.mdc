@@ -1,0 +1,86 @@
+---
+description: Patterns for seed data that populates reference tables with system-required values
+globs:
+  - "sql/seed_data.sql"
+  - "manchego/database/**/*seed*.py"
+alwaysApply: false
+---
+
+# Seed Data Patterns
+
+## Purpose
+Seed data populates housekeeping/reference tables with values required for system operation.
+
+## What to Include
+- Account types, payment types, timeline sources
+- System-required reference data that rarely changes
+- Lookup table values needed for foreign key constraints
+- Default configuration values
+
+## What NOT to Include
+- User-specific data (accounts, vendors, receipts, transactions)
+- Test data (use pytest fixtures instead)
+- Large datasets (use data loaders)
+- Environment-specific data (use separate seed files if needed)
+
+## File Location
+- Store in `sql/seed_data.sql` (committed to source control)
+- Applied after schema initialization
+- Must be idempotent (safe to run multiple times)
+
+## Loading Order
+1. Create schema: `sql/schema.sql`
+2. Load seed data: `sql/seed_data.sql`
+3. Load user data: via `manchego/database/loaders/`
+
+## Format Requirements
+- Use explicit column names in INSERT statements
+- Use Title Case for human-readable values
+- Include descriptive `description` fields
+- Group related inserts with section comments
+- One INSERT per table (use multiple VALUES for rows)
+
+## Idempotency
+- Use `INSERT OR IGNORE` if data might already exist
+- Or use `INSERT ... ON CONFLICT DO NOTHING` (SQLite 3.24+)
+- Document if manual cleanup needed before re-running
+
+## Data Value Conventions
+- Use Title Case for labels/names: `"Credit Card"`, `"E-Transfer"`
+- Use lowercase for system identifiers: `"rescuetime"`, `"geofency"`
+- Be descriptive in description fields
+- Keep values stable (don't change existing values)
+
+## Examples
+
+❌ **Avoid:**
+```sql
+-- No column names, lowercase values, no descriptions
+INSERT INTO account_types VALUES ('checking'), ('savings');
+
+-- Separate INSERT per row (inefficient)
+INSERT INTO payment_types (name) VALUES ('cash');
+INSERT INTO payment_types (name) VALUES ('debit');
+INSERT INTO payment_types (name) VALUES ('credit');
+```
+
+✅ **Prefer:**
+```sql
+-- Explicit columns, Title Case, descriptions, grouped VALUES
+INSERT INTO account_types (label, description) VALUES
+    ('Checking', 'Personal or business checking account'),
+    ('Savings', 'Savings account'),
+    ('Credit Card', 'Credit card account'),
+    ('Cash', 'Physical cash');
+
+INSERT INTO payment_types (name, description) VALUES
+    ('Cash', 'Physical cash payment'),
+    ('Debit', 'Debit card payment'),
+    ('Credit Card', 'Credit card payment'),
+    ('E-Transfer', 'Electronic transfer (Interac, etc.)');
+
+INSERT INTO timeline_sources (name, description) VALUES
+    ('rescuetime', 'RescueTime time tracking data'),
+    ('screentime', 'macOS/iOS ScreenTime data'),
+    ('geofency', 'Geofency location tracking data');
+```

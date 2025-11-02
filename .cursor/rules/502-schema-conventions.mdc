@@ -1,0 +1,99 @@
+---
+description: Schema design conventions for table structure, naming, data types, and constraints
+globs:
+  - "sql/**/*.sql"
+  - "manchego/database/**/*.py"
+alwaysApply: false
+---
+
+# Schema Conventions
+
+## Table Naming
+- Use lowercase with underscores: `receipt_items`, `ledger_receipts`
+- Entity tables are plural: `vendors`, `receipts`, `accounts`, `items`
+- Junction tables describe relationship: `ledger_receipts` (alphabetical order)
+- Housekeeping tables use suffixes: `account_types`, `payment_types`, `timeline_sources`
+
+## Column Naming
+- Use lowercase with underscores: `transaction_date`, `vendor_id`, `created_at`
+- Foreign keys: `{table}_id` (UUID) or `{table}_label` (natural key)
+- Timestamps: `created_at`, `updated_at` (always TEXT, ISO 8601 UTC)
+- Booleans: prefix with `is_`: `is_active`, `is_deleted`
+
+## Primary Keys
+- UUID (TEXT) for entity tables: `id TEXT PRIMARY KEY`
+- Natural keys (TEXT) for housekeeping: `label TEXT PRIMARY KEY`, `name TEXT PRIMARY KEY`
+- Composite keys for junction tables: `PRIMARY KEY (entity1_id, entity2_id)`
+
+## Foreign Keys
+- Always enable: `PRAGMA foreign_keys = ON` at top of schema
+- Junction tables: `ON DELETE CASCADE` (clean up orphans)
+- Entity relationships: omit clause (defaults to RESTRICT)
+- Name pattern: `{referenced_table}_id` or `{referenced_table}_label`
+
+## Data Types
+- **TEXT**: strings, UUIDs, dates, timestamps, JSON
+- **REAL**: money amounts, percentages, measurements (never INTEGER for currency)
+- **INTEGER**: counts, durations in seconds, quantities
+- **BOOLEAN**: stored as INTEGER (0=false, 1=true)
+
+## Money Conventions
+- **Positive amounts** = money coming in (income, deposits, credits)
+- **Negative amounts** = money leaving (expenses, withdrawals, debits)
+- Always include `currency TEXT DEFAULT 'CAD'`
+- Use REAL type (supports decimal cents)
+
+## Default Values
+- Currency: `DEFAULT 'CAD'`
+- Timestamps: `DEFAULT (datetime('now'))`
+- Booleans: `DEFAULT TRUE` or `DEFAULT FALSE`
+- Amounts: `DEFAULT 0.0`
+- Status fields: `DEFAULT 'active'` or similar
+
+## Required Timestamps
+- Every table must have: `created_at TEXT DEFAULT (datetime('now'))`
+- Every table must have: `updated_at TEXT DEFAULT (datetime('now'))`
+- Store as TEXT in ISO 8601 format: `YYYY-MM-DDTHH:MM:SS.sssZ`
+- Always use UTC timezone
+
+## Indexes
+- Name format: `idx_{table}_{column}` or `idx_{table}_{col1}_{col2}`
+- Create for all foreign keys
+- Create for frequently queried columns (dates, amounts, status)
+- Create composite indexes for common multi-column queries
+
+## Junction Tables
+- Name: `{entity1}_{entity2}` in alphabetical order
+- Composite primary key on both foreign keys
+- Always `ON DELETE CASCADE` on both foreign keys
+- Include `created_at` timestamp
+- Optional `notes TEXT` for relationship metadata
+
+## Examples
+
+❌ **Avoid:**
+```sql
+-- Mixed case, no underscores
+CREATE TABLE ReceiptItems (
+    ID INTEGER PRIMARY KEY,  -- INTEGER for UUID
+    receiptId TEXT,          -- camelCase
+    Amount INTEGER,          -- INTEGER for money
+    active BOOLEAN           -- Missing is_ prefix
+);
+```
+
+✅ **Prefer:**
+```sql
+-- Lowercase with underscores, proper types
+CREATE TABLE items (
+    id TEXT PRIMARY KEY,
+    receipt_id TEXT NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
+    amount REAL NOT NULL,
+    currency TEXT DEFAULT 'CAD',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_items_receipt_id ON items(receipt_id);
+```

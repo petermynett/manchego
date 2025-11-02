@@ -1,0 +1,319 @@
+---
+description: Systematic patterns for updating tests after refactoring code (signature changes, return structures, etc.)
+globs:
+  - "tests/**/*.py"
+alwaysApply: false
+---
+
+# Test Migration Patterns
+
+When refactoring code, tests must be updated systematically. This rule provides checklists and patterns for common migration scenarios.
+
+**Note**: For CLI-specific test patterns, see **Rule 701**. For mocking consistency, see **Rule 704**.
+
+## When to Use This Rule
+
+Use these patterns when you:
+- Add/remove parameters to functions
+- Change return value structures
+- Rename functions or modules
+- Refactor function behavior significantly
+
+## Migration Pattern 1: Adding Parameter to Function
+
+**Scenario**: Added `operation_id` parameter to business functions
+
+### Step-by-Step Checklist
+
+1. **Find all tests calling the function:**
+   ```bash
+   grep -r "function_name" tests/
+   ```
+
+2. **Update mock call expectations:**
+   ```python
+   # BEFORE
+   mock.assert_called_once_with(arg1="value", arg2=42)
+   
+   # AFTER (added new_param)
+   mock.assert_called_once_with(arg1="value", arg2=42, new_param="expected_value")
+   ```
+
+3. **If parameter is auto-generated, mock the generator:**
+   ```python
+   # Mock parameter generation
+   mocker.patch("module.generate_new_param", return_value="test_value")
+   
+   # Then verify it's used
+   mock.assert_called_once_with(arg1="value", new_param="test_value")
+   ```
+
+4. **Update parametrized tests:**
+   ```python
+   @pytest.mark.parametrize("args,expected", [
+       (["cmd"], {"arg1": None}),
+       (["cmd", "--arg1", "5"], {"arg1": 5}),
+   ])
+   def test_parses_args(args, expected):
+       # CRITICAL: Add new parameter to expected dict
+       expected["new_param"] = "test_value"  # Don't forget this!
+       mock.assert_called_once_with(**expected)
+   ```
+
+5. **Run tests and fix remaining failures:**
+   ```bash
+   pytest tests/module/ -v
+   ```
+
+### Complete Example
+
+**Before (adding operation_id):**
+```python
+def test_preprocess_all(mocker):
+    mock = mocker.patch("module.preprocess_all")
+    mock.return_value = {"total": 5}
+    
+    result = module.preprocess_all(limit=10, force=True)
+    
+    mock.assert_called_once_with(limit=10, force=True)
+```
+
+**After (operation_id added):**
+```python
+def test_preprocess_all(mocker):
+    # Mock parameter generation
+    mocker.patch("module.generate_operation_id", return_value="test_op_id")
+    
+    mock = mocker.patch("module.preprocess_all")
+    mock.return_value = {"success": True, "total": 5, "succeeded": 5, "failed": 0}
+    
+    result = module.preprocess_all(limit=10, force=True)
+    
+    # Updated assertion includes new parameter
+    mock.assert_called_once_with(limit=10, force=True, operation_id="test_op_id")
+```
+
+## Migration Pattern 2: Changing Return Structure
+
+**Scenario**: Standardized return dict from `{"created": 5}` to `{"success": True, "succeeded": 5, "failed": 0}`
+
+### Step-by-Step Checklist
+
+1. **Find all tests asserting on old keys:**
+   ```bash
+   grep -r 'stats\["created"\]' tests/
+   grep -r '\.created' tests/
+   ```
+
+2. **Update mock return values:**
+   ```python
+   # BEFORE
+   mock.return_value = {"created": 5, "total": 10}
+   
+   # AFTER (standardized structure)
+   mock.return_value = {
+       "success": True,
+       "total": 10,
+       "succeeded": 5,
+       "failed": 0,
+       "skipped": 5,
+       "elapsed_s": 1.2
+   }
+   ```
+
+3. **Update assertions on return values:**
+   ```python
+   # BEFORE
+   assert result["created"] == 5
+   assert result["total"] == 10
+   
+   # AFTER
+   assert result["succeeded"] == 5
+   assert result["failed"] == 0
+   assert result["total"] == 10
+   assert result["success"] is True
+   ```
+
+4. **Remove assertions on deleted keys:**
+   ```python
+   # If key was removed entirely (e.g., "backup_count")
+   # BEFORE
+   assert result["backup_count"] == 5  # Remove this line
+   
+   # AFTER
+   # (removed - no longer relevant)
+   ```
+
+5. **Run tests:**
+   ```bash
+   pytest tests/ -k "test_name" -v
+   ```
+
+### Complete Example
+
+**Before:**
+```python
+def test_preprocess_all_creates_files(mocker):
+    mock = mocker.patch("module.preprocess_all")
+    mock.return_value = {"created": 3, "skipped": 2, "total": 5}
+    
+    result = module.preprocess_all()
+    
+    assert result["created"] == 3
+    assert result["skipped"] == 2
+```
+
+**After (standardized return):**
+```python
+def test_preprocess_all_creates_files(mocker):
+    mock = mocker.patch("module.preprocess_all")
+    mock.return_value = {
+        "success": True,
+        "total": 5,
+        "succeeded": 3,
+        "skipped": 2,
+        "failed": 0,
+        "elapsed_s": 1.0
+    }
+    
+    result = module.preprocess_all()
+    
+    # Updated assertions for new structure
+    assert result["succeeded"] == 3
+    assert result["skipped"] == 2
+    assert result["failed"] == 0
+    assert result["success"] is True
+```
+
+## Migration Pattern 3: Renaming Function
+
+**Scenario**: Renamed `process_files` to `process_all_files`
+
+### Step-by-Step Checklist
+
+1. **Find all imports:**
+   ```bash
+   grep -r "from .* import process_files" tests/
+   grep -r "import.*process_files" tests/
+   ```
+
+2. **Find all calls:**
+   ```bash
+   grep -r "process_files\(" tests/
+   ```
+
+3. **Update imports:**
+   ```python
+   # BEFORE
+   from module import process_files
+   
+   # AFTER
+   from module import process_all_files
+   ```
+
+4. **Update calls:**
+   ```python
+   # BEFORE
+   result = process_files(path)
+   
+   # AFTER
+   result = process_all_files(path)
+   ```
+
+5. **Update mocks:**
+   ```python
+   # BEFORE
+   mocker.patch("module.process_files")
+   
+   # AFTER
+   mocker.patch("module.process_all_files")
+   ```
+
+6. **Run tests:**
+   ```bash
+   pytest tests/module/ -v
+   ```
+
+## Migration Pattern 4: Combined Changes
+
+**Scenario**: Added parameter AND changed return structure
+
+### Approach
+
+Apply patterns sequentially:
+
+1. **First pass**: Add new parameter (Pattern 1)
+   - Update all mock assertions
+   - Run tests, fix failures
+
+2. **Second pass**: Update return structures (Pattern 2)
+   - Update mock return values
+   - Update result assertions
+   - Run tests, fix failures
+
+**Don't try to do both at once** - you'll miss tests!
+
+## Verification Checklist
+
+After any migration:
+
+- [ ] All tests pass: `pytest tests/ -v`
+- [ ] No test data leaked: `git status data/` clean
+- [ ] No linter errors: `ruff check tests/`
+- [ ] Searched for old patterns: `grep -r "old_pattern" tests/`
+- [ ] Updated docstrings if test behavior changed
+
+## Common Pitfalls
+
+### Pitfall 1: Forgetting Parametrized Tests
+
+```python
+@pytest.mark.parametrize("args,expected", [
+    (["cmd"], {"arg": None}),
+    (["cmd", "--arg", "5"], {"arg": 5}),
+])
+def test_command(args, expected):
+    # Easy to forget: add new param to expected dict!
+    expected["new_param"] = "value"  # Add this line
+    mock.assert_called_once_with(**expected)
+```
+
+### Pitfall 2: Mocking Wrong Location After Rename
+
+```python
+# WRONG (mocking old location)
+mocker.patch("module.old_function_name")
+
+# RIGHT (mock new location)
+mocker.patch("module.new_function_name")
+```
+
+### Pitfall 3: Half-Updated Return Dicts
+
+```python
+# WRONG (mixing old and new keys)
+mock.return_value = {
+    "created": 5,  # Old key
+    "succeeded": 3,  # New key
+    "total": 8
+}
+
+# RIGHT (use all new keys)
+mock.return_value = {
+    "success": True,
+    "total": 8,
+    "succeeded": 5,
+    "failed": 3,
+    "skipped": 0
+}
+```
+
+## Required Reading
+
+- **Rule 700**: Testing Standards - understand test types before migrating
+
+## See Also
+
+- Rule 701: CLI Testing Patterns - CLI-specific patterns that may need migration
+- Rule 704: CLI Mocking Consistency - where to mock after signature changes
+- Rule 605: Business Return Structures - standard return dict structure

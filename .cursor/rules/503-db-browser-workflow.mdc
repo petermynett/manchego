@@ -1,0 +1,178 @@
+---
+description: DB Browser for SQLite workflow patterns and agent awareness for manchego database development
+globs:
+  - "**/database/**/*.py"
+  - "**/db/**/*"
+  - "**/sql/**/*"
+alwaysApply: false
+---
+
+# DB Browser for SQLite Workflow
+
+## Agent Awareness
+
+When working with database changes in manchego, agents should understand that the user uses **DB Browser for SQLite** as their primary database management tool.
+
+### Key Workflow Points
+- User manually opens `db/manchego_dev.db` in DB Browser for SQLite
+- User visually inspects schema, runs queries, and validates changes
+- User expects database files to be ready for immediate DB Browser access
+- Schema changes should be immediately visible in DB Browser interface
+
+## Database File Management
+
+### File Locations
+- **Development**: `db/manchego_dev.db`
+- **Staging**: `db/manchego_stage.db` 
+- **Production**: `db/manchego_prod.db`
+
+### File State Expectations
+- Database files should always be in a consistent, usable state
+- After migrations, database should be immediately openable in DB Browser
+- No intermediate states that would confuse DB Browser interface
+- Foreign key constraints should be enabled for proper relationship display
+
+### Backup Considerations
+- DB Browser can create backups via "Save As" functionality
+- Snapshots in `db/snapshots/` are compressed backups for version control
+- User may manually backup via DB Browser before major changes
+
+## Schema Development Workflow
+
+### Visual Schema Inspection
+When suggesting schema changes, consider:
+- How changes will appear in DB Browser's "Database Structure" tab
+- Table relationships will be visible in "Browse Data" tab
+- Indexes will show in table structure view
+- Foreign key relationships will be displayed graphically
+
+### Query Development
+- DB Browser's "Execute SQL" tab is used for testing queries
+- Complex queries should be saved in `sql/queries/` for reuse
+- Query results are visually inspected in DB Browser's result grid
+- User can export query results directly from DB Browser
+
+### Data Validation
+- User visually inspects data integrity in DB Browser
+- Foreign key violations will be shown in DB Browser interface
+- Data types and constraints are visually verified
+- User can spot-check data quality through DB Browser's browsing interface
+
+## Migration Workflow Integration
+
+### Pre-Migration
+- User may open DB Browser to inspect current state
+- User can run queries to understand existing data
+- User may create manual backup via DB Browser "Save As"
+
+### Post-Migration
+- Database should be immediately openable in DB Browser
+- Schema changes should be visible in "Database Structure" tab
+- Data integrity should be maintained for visual inspection
+- Foreign key relationships should display correctly
+
+### Migration Testing
+- User will test migrations by opening database in DB Browser
+- Visual inspection of schema changes
+- Running sample queries to verify functionality
+- Checking data integrity through DB Browser interface
+
+## Agent Guidelines
+
+### When Suggesting Database Changes
+- Consider how changes will appear in DB Browser interface
+- Ensure foreign key relationships are properly defined
+- Use clear table and column names that are readable in DB Browser
+- Include proper indexes for DB Browser's performance
+
+### When Creating Migrations
+- Test that migration results in DB Browser-compatible database
+- Ensure schema is immediately viewable in "Database Structure" tab
+- Verify that foreign key relationships display correctly
+- Check that data browsing works properly in DB Browser
+
+### When Providing Database Guidance
+- Reference DB Browser's visual interface when explaining concepts
+- Suggest using DB Browser's "Execute SQL" tab for testing
+- Recommend visual inspection methods available in DB Browser
+- Consider DB Browser's export capabilities for data analysis
+
+## Common DB Browser Tasks
+
+### Schema Inspection
+- Open "Database Structure" tab to view tables, indexes, triggers
+- Use "Browse Data" tab to inspect table contents
+- Check foreign key relationships in table structure view
+- Verify data types and constraints visually
+
+### Query Development
+- Use "Execute SQL" tab for interactive query testing
+- Save complex queries as files in `sql/queries/`
+- Export query results for analysis
+- Use DB Browser's query history for reference
+
+### Data Management
+- Browse and edit data directly in "Browse Data" tab
+- Import/export data using DB Browser's built-in tools
+- Create visual backups using "Save As" functionality
+- Validate data integrity through visual inspection
+
+## Examples
+
+❌ **Avoid:**
+```python
+# Creating database in inconsistent state
+def create_database():
+    # Missing foreign key enablement
+    conn.execute("CREATE TABLE vendors (id TEXT PRIMARY KEY)")
+    # DB Browser won't show foreign key relationships properly
+```
+
+✅ **Prefer:**
+```python
+# Creating database ready for DB Browser inspection
+def create_database():
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("""
+        CREATE TABLE vendors (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    # Database immediately ready for DB Browser visual inspection
+```
+
+## Integration Points
+
+### With Migration System
+- Migrations should result in DB Browser-compatible databases
+- Schema changes should be immediately visible
+- Foreign key relationships should display correctly
+- Data integrity should be maintained for visual inspection
+
+### With Query System
+- Complex queries in `sql/queries/` can be opened in DB Browser
+- Query results can be exported from DB Browser for analysis
+- DB Browser's query history complements saved query files
+- Visual query building can inform complex query development
+
+### With Data Loading
+- Loaded data should be immediately browsable in DB Browser
+- Data quality issues should be visible through DB Browser interface
+- Foreign key relationships should be properly maintained
+- Data should be in format suitable for DB Browser's browsing interface
+
+## Agent Communication
+
+When discussing database work with the user:
+- Reference DB Browser's visual interface when appropriate
+- Suggest using DB Browser for validation and inspection
+- Consider DB Browser's capabilities when proposing solutions
+- Acknowledge that user will visually inspect changes in DB Browser
+
+## See Also
+- Rule 500: Database Patterns (foundation for database development)
+- Rule 501: Migration Naming (migration workflow integration)
+- Rule 502: Schema Conventions (schema design for DB Browser compatibility)
