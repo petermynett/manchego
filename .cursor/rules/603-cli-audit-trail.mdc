@@ -23,41 +23,41 @@ from manchego.cli.base import format_result
 from manchego.utils.cli_audit import log_command_end, log_command_start
 from manchego.utils.logging_helpers import generate_operation_id
 
-@app.command("stage")
-def stage_cmd(
+@app.command("process")
+def process_cmd(
     limit: Annotated[int | None, typer.Option(help="Limit number of items")] = None,
     dry_run: Annotated[bool, typer.Option(help="Preview without executing")] = False,
 ):
-    """Stage receipts to Google Sheets."""
+    """Process files from input directory."""
     # 1. Generate operation_id and start timing
-    operation_id = generate_operation_id("receipts_stage")
+    operation_id = generate_operation_id("dataset_process")
     t0 = time.time()
     
     # 2. Log command start (audit trail)
-    log_command_start("receipts:stage", {"limit": limit, "dry_run": dry_run}, operation_id)
+    log_command_start("dataset:process", {"limit": limit, "dry_run": dry_run}, operation_id)
     
     # 3. User-friendly console output
-    typer.echo("🔄 Staging receipts...")
+    typer.echo("🔄 Processing files...")
     
     try:
         # 4. Call business function with operation_id
-        result = stage_receipts_to_sheet(limit=limit, dry_run=dry_run, operation_id=operation_id)
+        result = process_files(limit=limit, dry_run=dry_run, operation_id=operation_id)
         
         # 5. Log command end (success)
-        log_command_end("receipts:stage", operation_id, result, time.time() - t0)
+        log_command_end("dataset:process", operation_id, result, time.time() - t0)
         
         # 6. Format and display result
-        format_result(result, "Receipt staging")
+        format_result(result, "File processing")
         
     except Exception as e:
         # 7. Log command end (failure)
-        log_command_end("receipts:stage", operation_id, {
+        log_command_end("dataset:process", operation_id, {
             "success": False,
             "error": str(e)
         }, time.time() - t0)
         
         # 8. User-friendly error message
-        typer.echo(f"❌ Receipt staging failed: {e}", err=True)
+        typer.echo(f"❌ Processing failed: {e}", err=True)
         raise typer.Exit(1) from e
 ```
 
@@ -80,8 +80,8 @@ Logs to `data/logs/cli/commands.log` in JSON format:
   "timestamp": "2025-10-11T18:20:01.234Z",
   "level": "INFO",
   "event": "command_start",
-  "command": "receipts:stage",
-  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",
+  "command": "dataset:process",
+  "operation_id": "dataset_process_20251011_182001_a3d5e8f4",
   "args": {
     "limit": 10,
     "dry_run": false
@@ -94,8 +94,8 @@ Logs to `data/logs/cli/commands.log` in JSON format:
   "timestamp": "2025-10-11T18:20:03.567Z",
   "level": "INFO",
   "event": "command_end",
-  "command": "receipts:stage",
-  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",
+  "command": "dataset:process",
+  "operation_id": "dataset_process_20251011_182001_a3d5e8f4",
   "result": {
     "success": true,
     "total": 10,
@@ -112,13 +112,13 @@ The operation_id generated in CLI commands MUST be passed to all business functi
 
 ```python
 # In CLI command
-operation_id = generate_operation_id("receipts_stage")
-result = stage_receipts_to_sheet(limit=limit, operation_id=operation_id)
+operation_id = generate_operation_id("dataset_process")
+result = process_files(limit=limit, operation_id=operation_id)
 
 # Business function signature
-def stage_receipts_to_sheet(limit: int | None = None, operation_id: str | None = None) -> dict:
+def process_files(limit: int | None = None, operation_id: str | None = None) -> dict:
     if operation_id is None:
-        operation_id = generate_operation_id("stage_receipts")
+        operation_id = generate_operation_id("process_files")
     # Use operation_id in all logs
 ```
 

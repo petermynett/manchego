@@ -50,8 +50,8 @@ alwaysApply: false
 
 ❌ **Avoid - Inconsistent return types:**
 ```python
-def stage_receipts() -> int:
-    """Returns count of staged items."""
+def process_files() -> int:
+    """Returns count of processed items."""
     # CLI can't distinguish success from failure
     return 47
 
@@ -73,9 +73,9 @@ def parse_receipt(path: Path) -> str:
 
 ✅ **Prefer - Consistent dict structures:**
 ```python
-def stage_receipts(limit: int = None) -> dict:
+def process_files(limit: int = None) -> dict:
     """
-    Stage processed receipts to Google Sheets.
+    Process files from input directory.
     
     Returns:
         dict: Operation results with counts and timing
@@ -83,12 +83,12 @@ def stage_receipts(limit: int = None) -> dict:
     results = {"succeeded": [], "failed": []}
     start = time.time()
     
-    for receipt in get_receipts(limit):
+    for file in get_files(limit):
         try:
-            stage_single_receipt(receipt)
-            results["succeeded"].append(receipt.name)
+            process_single_file(file)
+            results["succeeded"].append(file.name)
         except Exception as e:
-            results["failed"].append({"item": receipt.name, "reason": str(e)})
+            results["failed"].append({"item": file.name, "reason": str(e)})
     
     return {
         "success": len(results["failed"]) == 0,
@@ -154,22 +154,22 @@ def fetch_data(start: str, end: str) -> dict:
 
 ```python
 # OLD (returns int)
-def stage_all() -> int:
+def process_all() -> int:
     count = 0
     for item in items:
-        stage(item)
+        process(item)
         count += 1
     return count
 
 # NEW (returns dict)
-def stage_all() -> dict:
+def process_all() -> dict:
     succeeded = 0
     failed = 0
     failures = []
     
     for item in items:
         try:
-            stage(item)
+            process(item)
             succeeded += 1
         except Exception as e:
             failed += 1

@@ -54,3 +54,7 @@ def cli_preprocess():
         typer.echo(f"❌ Preprocessing failed: {e}", err=True)
         raise typer.Exit(1) from e
 ```
+
+## See Also
+
+- **Rule 609**: Console vs File Logging (explains the separation between user-friendly console output and machine-readable file logs)

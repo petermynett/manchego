@@ -135,80 +135,6 @@ def process_cmd(
         raise typer.Exit(1) from e
 ```
 
-### Example 2: Command with Dry-Run
-
-```python
-@app.command("stage")
-def stage_cmd(
-    limit: Annotated[int | None, typer.Option(help="Limit number of items")] = None,
-    dry_run: Annotated[bool, typer.Option(help="Preview without executing")] = False,
-):
-    """Stage processed data to Google Sheets."""
-    operation_id = generate_operation_id("dataset_stage")
-    t0 = time.time()
-    
-    log_command_start("dataset:stage", {"limit": limit, "dry_run": dry_run}, operation_id)
-    
-    if dry_run:
-        typer.echo("🔍 Dry-run: Previewing staging...")
-        result = stage_data(limit=limit, dry_run=True)
-        typer.echo(f"📋 {result}")
-        log_command_end("dataset:stage", operation_id, {"success": True, "dry_run": True}, time.time() - t0)
-        return
-
-    typer.echo("📤 Staging data...")
-    try:
-        result = stage_data(limit=limit, dry_run=False, operation_id=operation_id)
-        log_command_end("dataset:stage", operation_id, result, time.time() - t0)
-        format_result(result, "Data staging")
-    except Exception as e:
-        log_command_end("dataset:stage", operation_id, {"success": False, "error": str(e)}, time.time() - t0)
-        typer.echo(f"❌ Staging failed: {e}", err=True)
-        raise typer.Exit(1) from e
-```
-
-### Example 3: Command with Optional File Argument
-
-```python
-@app.command("stage")
-def stage_cmd(
-    file: Annotated[Path | None, typer.Option(help="Specific file to process")] = None,
-    dry_run: Annotated[bool, typer.Option(help="Preview without executing")] = False,
-):
-    """Stage transaction files to Google Sheets."""
-    operation_id = generate_operation_id("transactions_stage")
-    t0 = time.time()
-    
-    log_command_start("transactions:stage", {
-        "file": str(file) if file else None,
-        "dry_run": dry_run
-    }, operation_id)
-    
-    if dry_run:
-        typer.echo("🔍 Dry-run: Previewing...")
-        if file:
-            typer.echo(f"  Would process: {file.name}")
-        else:
-            count = len(get_all_files())
-            typer.echo(f"  Would process {count} files")
-        log_command_end("transactions:stage", operation_id, {"success": True, "dry_run": True}, time.time() - t0)
-        return
-
-    typer.echo("📤 Staging transactions...")
-    try:
-        if file:
-            result = stage_single_file(file, operation_id)
-        else:
-            result = stage_all_files(operation_id)
-        
-        log_command_end("transactions:stage", operation_id, result, time.time() - t0)
-        format_result(result, "Transaction staging")
-    except Exception as e:
-        log_command_end("transactions:stage", operation_id, {"success": False, "error": str(e)}, time.time() - t0)
-        typer.echo(f"❌ Staging failed: {e}", err=True)
-        raise typer.Exit(1) from e
-```
-
 ## Checklist for New CLI Commands
 
 When creating a new CLI command, verify:
@@ -229,3 +155,4 @@ When creating a new CLI command, verify:
 - **Rule 610**: Operation ID Tracing - explains operation_id format
 - **Rule 620**: CLI Output Standards - explains console output patterns
 - **Rule 621**: Error Handling Patterns - explains error handling strategy
+- **Rule 622**: Module Responsibilities - explains separation of CLI vs module concerns

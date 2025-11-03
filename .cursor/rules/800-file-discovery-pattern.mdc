@@ -1,9 +1,7 @@
 ---
 description: Standard pattern for file discovery functions in data pipeline modules
 globs:
-  - "manchego/time/**/*.py"
-  - "manchego/receipts/**/*.py"
-  - "manchego/ledger/**/*.py"
+  - "manchego/**/*.py"
 alwaysApply: false
 ---
 

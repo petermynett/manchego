@@ -89,12 +89,12 @@ logger.info("Data transformation complete", extra={
 Log external API usage:
 
 ```python
-logger.info("Staged to Google Sheets", extra={
+logger.info("API operation completed", extra={
     "operation_id": operation_id,
     "data": {
-        "rows_appended": len(rows),
-        "api_calls": 2,  # get_values + append
-        "sheet_id": sheet_id
+        "items_processed": len(items),
+        "api_calls": 2,
+        "endpoint": "data/process"
     }
 })
 ```
@@ -121,7 +121,11 @@ summary = {
 log_operation_summary(logger, "process_receipts", operation_id, summary)
 ```
 
-## Per-Item Timing
+## Optional/Advanced Metrics
+
+The following metrics are optional and should be added when investigating performance issues or when specific operations warrant detailed tracking.
+
+### Per-Item Timing
 
 For operations with significant per-item variance, log individual timings:
 
@@ -144,9 +148,9 @@ if item_elapsed > 5.0:
     })
 ```
 
-## Database Operations
+### Database Query Timing
 
-Log query performance:
+Log query performance (optional, add when investigating database performance):
 
 ```python
 import time
@@ -167,9 +171,9 @@ logger.debug("Database query executed", extra={
 })
 ```
 
-## API Rate Limiting
+### API Rate Limiting
 
-Log API usage to track rate limits:
+Log API usage to track rate limits (optional, add when monitoring external services):
 
 ```python
 logger.info("API call completed", extra={
@@ -184,9 +188,9 @@ logger.info("API call completed", extra={
 })
 ```
 
-## Memory Usage (for large operations)
+### Memory Usage
 
-For operations processing large datasets:
+For operations processing large datasets (optional, add when investigating memory issues):
 
 ```python
 import psutil
@@ -205,9 +209,9 @@ logger.debug("Memory usage", extra={
 })
 ```
 
-## Performance Analysis Benefits
+## Performance Analysis (Optional)
 
-With structured performance logging, you can:
+With structured performance logging, you can analyze performance trends. The following analysis commands are useful when investigating performance issues:
 
 **Identify bottlenecks:**
 ```bash
@@ -233,9 +237,9 @@ jq 'select(.data.api_calls != null) | {operation: .operation_id, calls: .data.ap
 jq 'select(.data.elapsed_s > 5) | {item: .data.item, elapsed: .data.elapsed_s}' logs/**/*.log
 ```
 
-## Performance Thresholds
+### Performance Thresholds (Optional)
 
-Define and log against performance thresholds:
+Define and log against performance thresholds when you want proactive alerts:
 
 ```python
 THRESHOLDS = {

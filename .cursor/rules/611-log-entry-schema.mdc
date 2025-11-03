@@ -21,8 +21,8 @@ Every log entry MUST include:
 {
   "timestamp": "2025-10-11T18:20:01.234Z",  // ISO 8601 format with timezone
   "level": "INFO",                          // DEBUG, INFO, WARNING, ERROR, CRITICAL
-  "module": "manchego.receipts.stage",      // Python module name (__name__)
-  "message": "Staged receipt successfully"  // Human-readable message
+  "module": "manchego.dataset.process",      // Python module name (__name__)
+  "message": "Processed file successfully"  // Human-readable message
 }
 ```
 
@@ -32,14 +32,14 @@ Include when available:
 
 ```json
 {
-  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",  // For tracing
+  "operation_id": "dataset_process_20251011_182001_a3d5e8f4",  // For tracing
   "data": {                                                    // Structured data
-    "file": "receipt_001.jpg",
+    "file": "data_001.csv",
     "rows": 12,
     "hash": "a3d5e8f4..."
   },
   "context": {                                                 // Execution context
-    "function": "stage_receipt",
+    "function": "process_file",
     "file_path": "/path/to/file"
   }
 }
@@ -77,19 +77,18 @@ Include as needed:
 {
   "timestamp": "2025-10-11T18:20:01.234Z",
   "level": "INFO",
-  "module": "manchego.receipts.stage",
-  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",
-  "message": "Staged receipt successfully",
+  "module": "manchego.dataset.process",
+  "operation_id": "dataset_process_20251011_182001_a3d5e8f4",
+  "message": "Processed file successfully",
   "data": {
-    "file": "receipt_001.jpg",
+    "file": "data_001.csv",
     "rows": 12,
     "hash": "a3d5e8f473b2d1c4e5a6f7d8e9b0c1d2",
-    "sheet_id": "1ttXvQx...",
     "size_bytes": 123456
   },
   "context": {
-    "function": "stage_receipt",
-    "file_path": "/Users/petermynett/dev/active/manchego/data/receipts/processed/receipt_001.jpg"
+    "function": "process_file",
+    "file_path": "/Users/petermynett/dev/active/manchego/data/dataset/processed/data_001.csv"
   },
   "elapsed_s": 0.123
 }
@@ -126,7 +125,7 @@ The `data` field should contain:
 - **Business data**: Files processed, rows affected, records created
 - **Computed values**: Hashes, IDs, metadata
 - **Quantitative data**: Counts, sizes, durations
-- **References**: External IDs (sheet_id, receipt_id)
+- **References**: External IDs (file_id, record_id)
 
 ❌ **Don't include in data:**
 - Secrets (API keys, tokens, passwords)
@@ -145,7 +144,7 @@ The `context` field should contain:
 Use the `extra` parameter to add structured data:
 
 ```python
-logger.info("Staged receipt successfully", extra={
+logger.info("Processed file successfully", extra={
     "operation_id": operation_id,
     "data": {
         "file": file.name,
@@ -153,7 +152,7 @@ logger.info("Staged receipt successfully", extra={
         "hash": hash_value
     },
     "context": {
-        "function": "stage_receipt",
+        "function": "process_file",
         "file_path": str(file)
     },
     "elapsed_s": elapsed_time

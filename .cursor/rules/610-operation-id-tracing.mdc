@@ -16,7 +16,7 @@ Every operation (CLI command, batch process, scheduled task) should generate a u
 ```
 
 **Examples:**
-- `receipts_stage_20251011_182001_a3d5e8f4`
+- `receipts_process_20251011_182001_a3d5e8f4`
 - `transactions_import_20251011_143022_b7f3d9e1`
 - `sync_all_20251011_090000_c8e4a0f2`
 
@@ -33,8 +33,8 @@ Use the helper function:
 ```python
 from manchego.utils.logging_helpers import generate_operation_id
 
-operation_id = generate_operation_id("stage_receipts")
-# Returns: "stage_receipts_20251011_182001_a3d5e8f4"
+operation_id = generate_operation_id("process_files")
+# Returns: "process_files_20251011_182001_a3d5e8f4"
 ```
 
 ## When to Generate vs When to Pass
@@ -59,11 +59,11 @@ Generate operation_id at the **entry point** of an operation:
 CLI commands ALWAYS generate a new operation_id:
 
 ```python
-@app.command("stage")
-def stage_cmd():
+@app.command("process")
+def process_cmd():
     # ALWAYS generate - this is the entry point
-    operation_id = generate_operation_id("receipts_stage")
-    result = stage_receipts(operation_id=operation_id)  # Pass it down
+    operation_id = generate_operation_id("dataset_process")
+    result = process_files(operation_id=operation_id)  # Pass it down
 ```
 
 ### Pattern: Business Functions (Accept + Auto-Generate)
@@ -71,13 +71,13 @@ def stage_cmd():
 Business functions accept operation_id but auto-generate if None:
 
 ```python
-def stage_receipts(operation_id: str | None = None):
+def process_files(operation_id: str | None = None):
     # Auto-generate if called directly (not from CLI)
     if operation_id is None:
-        operation_id = generate_operation_id("stage_receipts")
+        operation_id = generate_operation_id("process_files")
     
     # Now use operation_id in all logs and pass to helpers
-    log_operation_start(logger, "stage_receipts", operation_id)
+    log_operation_start(logger, "process_files", operation_id)
     
     for file in files:
         process_file(file, operation_id)  # Pass it down
@@ -115,24 +115,24 @@ Pass operation_id down the call stack:
 
 ```python
 # CLI entry point - generate here
-@app.command("stage")
-def stage_cmd():
-    operation_id = generate_operation_id("receipts_stage")
-    result = stage_receipts_to_sheet(operation_id=operation_id)
+@app.command("process")
+def process_cmd():
+    operation_id = generate_operation_id("dataset_process")
+    result = process_files(operation_id=operation_id)
 
 # Business function - receive and use
-def stage_receipts_to_sheet(operation_id: str | None = None) -> dict:
+def process_files(operation_id: str | None = None) -> dict:
     if operation_id is None:
-        operation_id = generate_operation_id("stage_receipts")
+        operation_id = generate_operation_id("process_files")
     
-    log_operation_start(logger, "stage_receipts", operation_id)
+    log_operation_start(logger, "process_files", operation_id)
     
     for file in files:
-        stage_single_receipt(file, operation_id)
+        process_single_file(file, operation_id)
 
 # Helper function - receive and use
-def stage_single_receipt(file: Path, operation_id: str):
-    logger.info("Staging receipt", extra={
+def process_single_file(file: Path, operation_id: str):
+    logger.info("Processing file", extra={
         "operation_id": operation_id,
         "data": {"file": file.name}
     })
@@ -143,18 +143,18 @@ def stage_single_receipt(file: Path, operation_id: str):
 Make operation_id optional with auto-generation fallback:
 
 ```python
-def stage_receipts_to_sheet(
+def process_files(
     limit: int | None = None,
     operation_id: str | None = None
 ) -> dict:
-    """Stage receipts to Google Sheets.
+    """Process files from input directory.
     
     Args:
-        limit: Maximum number of receipts to stage
+        limit: Maximum number of files to process
         operation_id: Operation ID for log tracing (auto-generated if None)
     """
     if operation_id is None:
-        operation_id = generate_operation_id("stage_receipts")
+        operation_id = generate_operation_id("process_files")
     
     # Use operation_id in all logs
 ```
@@ -185,8 +185,8 @@ The JSON formatter will extract operation_id to a top-level field:
 {
   "timestamp": "2025-10-11T18:20:01.234Z",
   "level": "INFO",
-  "module": "manchego.receipts.stage",
-  "operation_id": "receipts_stage_20251011_182001_a3d5e8f4",
+  "module": "manchego.dataset.process",
+  "operation_id": "dataset_process_20251011_182001_a3d5e8f4",
   "message": "Operation started",
   "data": {"limit": 50}
 }
@@ -198,10 +198,10 @@ Machine-readable logs enable easy querying:
 
 ```bash
 # Get all logs for a specific operation
-jq 'select(.operation_id == "receipts_stage_20251011_182001_a3d5e8f4")' data/logs/receipts/*.log
+jq 'select(.operation_id == "dataset_process_20251011_182001_a3d5e8f4")' data/logs/dataset/*.log
 
 # Show timeline of an operation
-jq -r 'select(.operation_id == "receipts_stage_20251011_182001_a3d5e8f4") | "\(.timestamp) [\(.level)] \(.message)"' data/logs/**/*.log | sort
+jq -r 'select(.operation_id == "dataset_process_20251011_182001_a3d5e8f4") | "\(.timestamp) [\(.level)] \(.message)"' data/logs/**/*.log | sort
 ```
 
 ## Benefits

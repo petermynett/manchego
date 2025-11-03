@@ -21,7 +21,7 @@ Manchego separates file logging (machine-readable JSON for agents) from console 
 
 **Example**:
 ```json
-{"timestamp": "2025-10-11T18:20:01.234Z", "level": "INFO", "module": "manchego.receipts.stage", "operation_id": "receipts_stage_20251011_182001_a3d5e8f4", "message": "Staged receipt successfully", "data": {"file": "receipt_001.jpg", "rows": 12}}
+{"timestamp": "2025-10-11T18:20:01.234Z", "level": "INFO", "module": "manchego.dataset.process", "operation_id": "dataset_process_20251011_182001_a3d5e8f4", "message": "Processed file successfully", "data": {"file": "data_001.csv", "rows": 12}}
 ```
 
 **When**: ALL module operations log to files
@@ -222,4 +222,7 @@ When things go wrong:
 | **Who uses** | All modules | CLI commands only |
 | **Configuration** | `setup_logger()` | `typer.echo()` |
 
-**For implementation details**: See Rule 600 (logging configuration) and Rule 620 (CLI output standards).
+## See Also
+
+- **Rule 600**: Logging Configuration (how to configure `setup_logger()` for file and console output)
+- **Rule 620**: CLI Output Standards (detailed patterns for user-friendly console output with emojis and formatting)

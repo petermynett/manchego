@@ -23,19 +23,19 @@ from manchego.utils.logging_helpers import (
     log_operation_summary
 )
 
-def stage_all_receipts() -> dict:
-    """Stage all receipts to Google Sheets."""
-    operation_id = generate_operation_id("stage_receipts")
+def process_all_files() -> dict:
+    """Process all files in the input directory."""
+    operation_id = generate_operation_id("process_files")
     
     # 1. Log operation start
-    log_operation_start(logger, "stage_receipts", operation_id, 
+    log_operation_start(logger, "process_files", operation_id, 
                        limit=None, recurse=False)
     
     results = {"succeeded": [], "failed": []}
     
     for file in files:
         try:
-            result = stage_receipt(file, operation_id)
+            result = process_file(file, operation_id)
             # 2. Log per-file success
             log_file_success(logger, file.name, operation_id,
                            rows=result['rows'], hash=result['hash'])
@@ -54,7 +54,7 @@ def stage_all_receipts() -> dict:
         "failed": len(results["failed"]),
         "failures": results["failed"]
     }
-    log_operation_summary(logger, "stage_receipts", operation_id, summary)
+    log_operation_summary(logger, "process_files", operation_id, summary)
     
     return summary
 ```
@@ -112,7 +112,7 @@ logger.info(f"Staged {filename}: {rows} rows, hash={hash_val}")
 
 ✅ **Prefer:**
 ```python
-logger.info("Staged receipt", extra={
+logger.info("Processed file", extra={
     "operation_id": operation_id,
     "data": {
         "file": filename,
@@ -168,12 +168,12 @@ logger.warning("Skipped duplicate file", extra={
 Pass operation_id through the call stack:
 
 ```python
-def stage_all_receipts() -> dict:
-    operation_id = generate_operation_id("stage_receipts")
+def process_all_files() -> dict:
+    operation_id = generate_operation_id("process_files")
     for file in files:
-        stage_receipt(file, operation_id)  # Pass operation_id
+        process_file(file, operation_id)  # Pass operation_id
 
-def stage_receipt(file: Path, operation_id: str) -> dict:
-    logger.info("Staging receipt", extra={"operation_id": operation_id, ...})
+def process_file(file: Path, operation_id: str) -> dict:
+    logger.info("Processing file", extra={"operation_id": operation_id, ...})
     # All logs use the same operation_id
 ```

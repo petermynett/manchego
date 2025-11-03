@@ -22,7 +22,6 @@ When an operation fails, undo:
 - ✅ Written cache entries
 - ✅ Computed hashes stored anywhere
 - ✅ Partial database writes
-- ✅ Google Sheets uploads (if possible to revert)
 
 ## Implementation Patterns
 
@@ -71,41 +70,41 @@ def process_file(src: Path) -> Path:
 
 ❌ **Avoid:**
 ```python
-def stage_receipt(path: Path):
+def process_file(path: Path):
     # Compute hash and cache it
     hash_val = compute_hash(path)
     HASH_CACHE[path.name] = hash_val
     
-    # Upload (might fail!)
-    upload_to_sheets(path, hash_val)
+    # Save to database (might fail!)
+    save_to_database(path, hash_val)
     
     # Move file (original already modified)
-    path.rename(STAGED_DIR / path.name)
+    path.rename(PROCESSED_DIR / path.name)
 ```
 
 ✅ **Prefer:**
 ```python
-def stage_receipt(path: Path):
-    """Stage receipt with transactional semantics."""
+def process_file(path: Path):
+    """Process file with transactional semantics."""
     hash_val = None
-    uploaded = False
+    saved = False
     
     try:
         # Compute hash (in-memory only)
         hash_val = compute_hash(path)
         
-        # Upload to sheets
-        upload_to_sheets(path, hash_val)
-        uploaded = True
+        # Save to database
+        save_to_database(path, hash_val)
+        saved = True
         
         # Only persist state after success
         HASH_CACHE[path.name] = hash_val
-        dst = STAGED_DIR / path.name
+        dst = PROCESSED_DIR / path.name
         shutil.move(path, dst)
         
     except Exception as e:
         # Rollback: don't cache hash, file stays in place
-        log_error_with_context(logger, e, f"Failed to stage {path.name}")
+        log_error_with_context(logger, e, f"Failed to process {path.name}")
         # Original file untouched, no cleanup needed
         raise
 ```

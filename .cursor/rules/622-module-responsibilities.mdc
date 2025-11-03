@@ -69,3 +69,7 @@ def parse_receipt(path, operation_id):
         log_file_failure(logger, path.name, operation_id, e)  # Log in module
         raise  # Let CLI handle user communication
 ```
+
+## See Also
+
+- **Rule 612**: CLI Command Pattern (complete template showing how CLI commands orchestrate module functions)
