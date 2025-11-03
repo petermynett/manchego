@@ -1,0 +1,48 @@
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+MANIFEST
+
+# Environments
+env/
+venv/
+.venv/
+env.bak/
+venv.bak/
+.envrc
+
+# Jupyter (keep notebooks, ignore checkpoints)
+.ipynb_checkpoints/
+
+# Coverage / testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Linting / type checking
+.ruff_cache/
+
+# Project artifacts (runtime data)
+data/
+*.db
+*.sqlite
+db/*.db
+db/snapshots/
+.secrets/
+.env
+.env.*
+*.log
+
