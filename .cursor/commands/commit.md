@@ -163,20 +163,15 @@ Review conversation for indicators:
 - `perf`: Performance improvements
 - `style`: Formatting/style only
 
-## Phase 5: User Review & Execution
+## Phase 5: Execute Git Commands
 
-**ALWAYS show generated message and ask for confirmation:**
+**Execute directly without user confirmation:**
 
-1. Display full commit message in a code block
-2. Ask user: "Commit with this message? (yes/no/edit)"
-3. If yes → execute:
-   ```bash
-   git add -A
-   git commit -m "[full message]"
-   git push
-   ```
-4. If no → exit gracefully
-5. If edit → allow user to modify message, then ask for confirmation again
+```bash
+git add -A
+git commit -m "[full message]"
+git push
+```
 
 **Success response**: "✓ Committed and pushed [hash]: [summary line]"
 
@@ -194,6 +189,6 @@ Review conversation for indicators:
 2. **AI-optimized**: Structured sections, specific technical details
 3. **Human-readable first line**: Summary is all humans need
 4. **Selective insights**: Only extract for genuinely complex sessions
-5. **Always confirm**: Never auto-commit without user approval
+5. **Direct execution**: Execute commit immediately when command is invoked (no confirmation needed)
 6. **Rule references**: Always include when patterns from `.cursor/rules/` applied
 
