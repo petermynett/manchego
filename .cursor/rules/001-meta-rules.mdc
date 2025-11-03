@@ -145,12 +145,6 @@ Use when another rule provides related examples, alternatives, or deeper dives.
 - Provide brief summary in current rule when possible
 - Only reference when it adds genuine value
 
-**4. Bidirectional References Are Natural** - Knowledge is interconnected:
-- Rule A can reference Rule B, and B can reference A
-- Context matters: they serve different purposes from different perspectives
-- Example: Rule 603 defines a pattern, Rule 612 shows how to use it
-- This creates a useful knowledge network, not problematic coupling
-
 **5. When to Duplicate vs Reference**:
 - **Duplicate**: 2-5 line code snippet needed to understand this rule immediately
 - **Reference**: Detailed explanation, complete examples, or extensive guidance already covered
