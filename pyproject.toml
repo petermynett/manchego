@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "manchego"
+version = "0.1.0"
+description = "Time & Money...what am I doing?"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.12",
+    "pandas",
+    "openai>=1.40,<2",
+    "google-api-python-client>=2.0",
+    "google-auth>=2.0",
+]
+
+[project.scripts]
+manchego = "manchego.cli.main:main"
+
+[tool.setuptools]
+packages = ["manchego"]
+
