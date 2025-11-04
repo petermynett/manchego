@@ -1,12 +1,12 @@
 ---
-description: Use mamba (preferred) or conda-forge exclusively for package installation with mandatory dry-run validation
+description: Use mamba exclusively for package installation from conda-forge with mandatory dry-run validation
 globs: []
 alwaysApply: true
 ---
 
 # Mamba/Conda-Forge Package Installation
 
-- Always use `mamba install -c conda-forge` for package installation in manchego (preferred) or `conda install -c conda-forge` if mamba unavailable
+- Always use `mamba install -c conda-forge` for package installation in manchego
 - Never use `pip install` unless explicitly approved by user after conda-forge fails
 - Run `mamba install -c conda-forge --dry-run [package]` FIRST before actual installation
 - If dry-run shows dependency conflicts or package unavailability, STOP and report to user
@@ -22,7 +22,7 @@ alwaysApply: true
 
 ✅ **Correct workflow:**
 ```bash
-# Step 1: Test first (mamba preferred for better dependency resolution)
+# Step 1: Test first (mamba provides better dependency resolution)
 mamba install -c conda-forge --dry-run pandas numpy
 
 # Step 2: If dry-run succeeds, install
@@ -41,7 +41,7 @@ pip install some-package
 ## Error Handling
 
 When dry-run fails, report to user with:
-- The exact error message from mamba/conda
+- The exact error message from mamba
 - Which package(s) caused the conflict
 - Whether the package exists on conda-forge at all
 - Ask if they want to proceed with alternative approach

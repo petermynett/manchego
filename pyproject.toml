@@ -22,3 +22,98 @@ manchego = "manchego.cli.main:main"
 [tool.setuptools]
 packages = ["manchego"]
 
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = [
+  ".git",
+  ".venv",
+  "venv",
+  "env",
+  "build",
+  "dist",
+  "data",
+  "scripts",
+  "notebooks",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".pytest_cache",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "F",    # Pyflakes
+  "I",    # isort (import sorting)
+  "UP",   # pyupgrade (modernize syntax)
+  "B",    # flake8-bugbear (bug-prone patterns)
+  "SIM",  # flake8-simplify
+  "D",    # pydocstyle (docstrings)
+  "N",    # pep8-naming
+  "S",    # bandit (basic security checks)
+  "C4",   # flake8-comprehensions (better comprehensions)
+  "RUF",  # Ruff-specific rules
+  "PIE",  # flake8-pie (common patterns)
+  "TCH",  # flake8-type-checking (import organization)
+  "TID",  # Ruff type-checking imports (additional type checking)
+]
+
+ignore = [
+  "E501", # line length (handled by formatter)
+  "D212", # we prefer summary on second line
+  "D205", # spacing after summary (we control formatting)
+  "D400", # summary must end with period (relaxed)
+  "D415", # summary punctuation variants (relaxed)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+  "D",    # relax all D* docstring rules in test files
+  "S101", # allow bare 'assert' in tests
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+  "-v",
+  "--strict-markers",
+  "--cov=manchego",
+  "--cov-report=term-missing",
+  "--cov-report=html",
+  "--cov-fail-under=80",
+]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+source = ["manchego"]
+data_file = ".pytest_cache/.coverage"
+omit = [
+  "*/tests/*",
+  "*/test_*.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "@abstractmethod",
+]
+

@@ -181,14 +181,37 @@ Run all commands silently, capture output internally:
 
 ## Phase 5: Execute Git Commands
 
+### Check for Pytest Override
+
+Before executing commit, check user's message/conversation for pytest override keywords:
+- "override pytest"
+- "skip tests"
+- "skip pytest"
+- "no tests"
+- "override tests"
+
+If any override keyword detected:
+- Set `SKIP=pytest` environment variable before git commit
+- This allows pre-commit hooks to skip pytest while still running ruff checks
+- Note in commit message that tests were skipped (add to Context section)
+
 **Execute directly without user confirmation, suppress output:**
 
 ```bash
 git add -A >/dev/null 2>&1
-COMMIT_OUTPUT=$(git commit -m "[full message]" 2>&1)
+
+# Check for pytest override in user message/conversation
+if [[ "$USER_MESSAGE" =~ (override pytest|skip tests|skip pytest|no tests|override tests) ]]; then
+  COMMIT_OUTPUT=$(SKIP=pytest git commit -m "[full message]" 2>&1)
+else
+  COMMIT_OUTPUT=$(git commit -m "[full message]" 2>&1)
+fi
+
 COMMIT_HASH=$(git log -1 --format=%H 2>/dev/null)
 PUSH_OUTPUT=$(git push 2>&1)
 ```
+
+**Note**: The actual implementation should check the conversation context for override keywords, not just `$USER_MESSAGE`. This is a reference for the logic needed.
 
 **Success response**: Only show final summary - "✓ Committed and pushed [hash]: [summary line]"
 
@@ -205,6 +228,21 @@ PUSH_OUTPUT=$(git push 2>&1)
 - **Push failure**: Show exact error, suggest `git pull` or conflict resolution
 - **Safety check failures**: Clear explanation, wait for user instruction
 
+## Pytest Override Handling
+
+When user explicitly requests to override pytest (via keywords in message), the commit workflow should:
+1. Detect override keywords in user's message/conversation context
+2. Set `SKIP=pytest` environment variable before executing `git commit`
+3. This allows pre-commit hooks to skip pytest while still running ruff checks
+4. Include note in commit message Context section that tests were skipped
+
+**Override keywords**:
+- "override pytest"
+- "skip tests"
+- "skip pytest"
+- "no tests"
+- "override tests"
+
 ## Key Principles
 
 1. **Adaptive detail**: More for complex, less for simple
@@ -214,4 +252,5 @@ PUSH_OUTPUT=$(git push 2>&1)
 5. **Direct execution**: Execute commit immediately when command is invoked (no confirmation needed)
 6. **Rule references**: Always include when patterns from `.cursor/rules/` applied
 7. **Quiet mode**: Suppress all intermediate output, only show final summary or errors
+8. **Pytest override**: Respect user's explicit request to skip tests when provided
 
