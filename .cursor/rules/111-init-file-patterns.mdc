@@ -1,0 +1,296 @@
+---
+description: Best practices for using __init__.py files to define public APIs and organize package structure
+globs:
+  - "manchego/**/__init__.py"
+alwaysApply: false
+---
+
+# __init__.py File Patterns
+
+- Use `__init__.py` to define public API exports for a package
+- Keep `__init__.py` files minimal unless exporting public API
+- Export only public functions, classes, and constants used by other modules
+- Never export private functions (those starting with `_`)
+- Use empty `__init__.py` for packages that don't need to expose a public API
+
+## When to Use Empty vs Populated __init__.py
+
+### Use Empty `__init__.py` When
+
+- Package doesn't expose a public API (all imports go directly to submodules)
+- Package is just a namespace container (no shared functionality)
+- All functionality is accessed via direct imports (`from manchego.receipts.preprocess import process_files`)
+
+### Use Populated `__init__.py` When
+
+- Package should provide convenient imports (`from manchego.receipts import process_files`)
+- Multiple modules expose related functionality worth grouping
+- Package has a clear public API surface
+- You want to hide internal module structure from consumers
+
+## What to Export
+
+### Export Public API Only
+
+- **Public functions**: Functions used by other modules (not starting with `_`)
+- **Public classes**: Classes used by other modules
+- **Public constants**: Constants used across modules
+- **Type aliases**: Type definitions used in public APIs
+
+### Don't Export
+
+- **Private functions**: Functions starting with `_` (implementation details)
+- **Internal classes**: Helper classes only used within the module
+- **Imports**: Don't re-export imports unless they're part of the public API
+- **Implementation details**: Keep internal module structure hidden
+
+## Export Patterns
+
+### Minimal Export (Recommended)
+
+Export only what's needed for convenient access:
+
+```python
+"""
+Receipt processing module.
+
+Provides functions for processing receipt images and parsing receipt data.
+"""
+from manchego.receipts.preprocess import process_files
+from manchego.receipts.parse_gpt import parse_receipt
+
+__all__ = ["process_files", "parse_receipt"]
+```
+
+### No Export (Empty File)
+
+If all imports go directly to submodules, keep `__init__.py` empty:
+
+```python
+# Empty file - no public API at package level
+```
+
+### Full API Export
+
+For packages with many related functions:
+
+```python
+"""
+Database module.
+
+Provides database connection management and query execution.
+"""
+from manchego.database.connection import get_connection, DatabaseContext
+from manchego.database.queries import execute_query, execute_many
+
+__all__ = [
+    "get_connection",
+    "DatabaseContext",
+    "execute_query",
+    "execute_many",
+]
+```
+
+## Package-Level Constants
+
+### Version Information
+
+For the root package, export version:
+
+```python
+"""
+Manchego - Machine-Optimized Technical Reference
+
+Personal finance and time tracking data management system.
+"""
+__version__ = "0.1.0"
+```
+
+### Package-Level Configuration
+
+If a package has shared configuration, export it:
+
+```python
+"""
+Utils module.
+
+Shared utilities for logging, file operations, and CLI audit.
+"""
+from manchego.utils.logging_config import setup_logger
+from manchego.utils.logging_helpers import generate_operation_id
+
+__all__ = ["setup_logger", "generate_operation_id"]
+```
+
+## Import Organization
+
+### Standard Library First
+
+```python
+"""
+Module docstring.
+"""
+from pathlib import Path
+from typing import Any
+
+from manchego.receipts.preprocess import process_files
+from manchego.receipts.parse_gpt import parse_receipt
+
+__all__ = ["process_files", "parse_receipt"]
+```
+
+### Avoid Circular Imports
+
+Don't import from sibling packages in `__init__.py` if it creates circular dependencies:
+
+```python
+# ❌ Avoid: Circular import risk
+from manchego.ledger import match_receipts  # If ledger imports receipts
+```
+
+## Examples
+
+### ✅ Empty __init__.py (Appropriate)
+
+```python
+# manchego/ledger/__init__.py
+# Empty - ledger module doesn't expose package-level API
+# Consumers import directly: from manchego.ledger.match import match_receipts
+```
+
+### ✅ Minimal Export (Recommended)
+
+```python
+# manchego/receipts/__init__.py
+"""
+Receipt processing module.
+
+Provides receipt intake, preprocessing, and parsing functionality.
+"""
+from manchego.receipts.preprocess import process_files
+from manchego.receipts.parse_gpt import parse_receipt
+
+__all__ = ["process_files", "parse_receipt"]
+```
+
+### ✅ Root Package Export
+
+```python
+# manchego/__init__.py
+"""
+Manchego - Machine-Optimized Technical Reference
+
+Personal finance and time tracking data management system.
+"""
+__version__ = "0.1.0"
+
+# Export commonly used utilities
+from manchego.utils.logging_config import setup_logger
+
+__all__ = ["__version__", "setup_logger"]
+```
+
+### ❌ Over-Exporting
+
+```python
+# ❌ Don't export everything
+from manchego.receipts.preprocess import *
+from manchego.receipts.parse_gpt import *
+
+# ❌ Don't export private functions
+from manchego.receipts.preprocess import _normalize_vendor, process_files
+
+__all__ = ["_normalize_vendor", "process_files"]  # ❌ Includes private function
+```
+
+### ❌ Importing Implementation Details
+
+```python
+# ❌ Don't expose internal module structure
+from manchego.receipts.preprocess import _normalize_vendor, _validate_image
+from manchego.receipts.internal_helpers import _helper_function
+
+__all__ = ["_normalize_vendor", "_validate_image", "_helper_function"]  # ❌ Private functions
+```
+
+### ✅ Package with Multiple Exports
+
+```python
+# manchego/utils/__init__.py
+"""
+Shared utilities module.
+
+Provides logging, file operations, and CLI audit functionality.
+"""
+from manchego.utils.logging_config import setup_logger
+from manchego.utils.logging_helpers import generate_operation_id
+from manchego.utils.file_ops import discover_files
+
+__all__ = [
+    "setup_logger",
+    "generate_operation_id",
+    "discover_files",
+]
+```
+
+## Import Usage Patterns
+
+### With Package-Level Exports
+
+```python
+# ✅ Clean import when __init__.py exports
+from manchego.receipts import process_files, parse_receipt
+```
+
+### Without Package-Level Exports
+
+```python
+# ✅ Direct import when __init__.py is empty
+from manchego.receipts.preprocess import process_files
+from manchego.receipts.parse_gpt import parse_receipt
+```
+
+## Decision Tree
+
+```
+Does this package need convenient imports?
+├─ NO → Use empty __init__.py
+└─ YES → What should be exported?
+    ├─ 1-3 functions/classes → Minimal export with __all__
+    ├─ Many related items → Full API export with __all__
+    └─ Package-level constants → Export constants + __version__
+```
+
+## Testing Considerations
+
+When `__init__.py` exports functions, tests can import from package:
+
+```python
+# tests/receipts/test_preprocess.py
+from manchego.receipts import process_files  # ✅ If exported
+```
+
+Or import directly from module:
+
+```python
+# tests/receipts/test_preprocess.py
+from manchego.receipts.preprocess import process_files  # ✅ Always works
+```
+
+Both patterns are valid - choose based on what `__init__.py` exports.
+
+## Module Docstrings
+
+Always include module docstring in `__init__.py` if it's not empty:
+
+```python
+"""
+Receipt processing module.
+
+Provides receipt intake, preprocessing, and parsing functionality.
+"""
+```
+
+**See Also:**
+- Rule 100: Docstring Standards (module docstring format)
+- Rule 110: Config File Patterns (config vs __init__.py exports)

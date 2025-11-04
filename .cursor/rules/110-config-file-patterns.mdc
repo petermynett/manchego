@@ -1,0 +1,200 @@
+---
+description: Rules for what goes in config files and when to use global_config.py versus module-specific config.py
+globs:
+  - "manchego/**/*.py"
+alwaysApply: false
+---
+
+# Configuration File Patterns
+
+- Use `global_config.py` for cross-module paths, settings, and shared configuration
+- Use module-specific `config.py` only for settings that are truly module-specific and won't be shared
+- Move values from module config to global config when used by 2+ modules
+- Avoid hardcoding paths, IDs, or environment-specific values in business logic
+
+## What Goes in Config Files
+
+### Use Config Files For
+
+- **Paths**: Directory paths, file paths, database paths
+- **IDs**: Google Sheets IDs, API endpoint IDs, external resource identifiers
+- **Settings**: Timeouts, retry counts, batch sizes, feature flags
+- **Environment-specific values**: Different values per environment (dev/stage/prod)
+- **Constants that may change**: Values that might need adjustment without code changes
+
+### Don't Put in Config Files
+
+- **Derived values**: Values computed from other config values (calculate in code)
+- **Logic**: Functions, classes, or business logic
+- **Imports**: Import statements belong in the files that use them
+- **One-time use constants**: Values used only once in a single function (keep local)
+
+## Global Config vs Module Config
+
+### Use `global_config.py` For
+
+- **Cross-module paths**: Dataset paths (`data/datasets/{dataset}/{stage}/`), log paths (`data/logs/{module}/`)
+- **Database configuration**: Database paths, connection settings
+- **Shared API configuration**: Google Sheets IDs, API keys (from environment)
+- **Environment variables**: Reading and exposing environment variables
+- **System-wide settings**: Values used by multiple modules
+
+### Use Module `config.py` For
+
+- **Module-specific paths**: Paths only used within that module
+- **Module-specific constants**: Settings unique to that module's domain
+- **Temporary settings**: Experimental values that may move to global config later
+
+### Decision Tree
+
+```
+Is this value used by 2+ modules?
+├─ YES → Use global_config.py
+└─ NO → Is this value a path, ID, or setting?
+    ├─ YES → Use module config.py
+    └─ NO → Keep it local or inline
+```
+
+## When to Move from Module Config to Global Config
+
+### Trigger Conditions
+
+Move a value from module `config.py` to `global_config.py` when:
+
+1. **Used by 2+ modules**: Another module needs the same value
+2. **Shared path pattern**: Path follows a pattern already in global config
+3. **Environment-specific**: Needs different values per environment
+4. **Repeated imports**: Multiple modules import the same value from module config
+
+### Migration Checklist
+
+When moving a value from module config to global config:
+
+1. [ ] Add value to `global_config.py` with appropriate naming
+2. [ ] Update all importing modules to use `global_config` instead
+3. [ ] Remove value from module `config.py`
+4. [ ] If module config becomes empty, consider removing the file
+5. [ ] Update tests that mock or reference the old config
+
+## Examples
+
+### Global Config Example
+
+```python
+"""
+Global configuration for manchego paths and settings.
+
+Defines dataset paths, database paths, log paths, and API configuration.
+All paths use Path objects from pathlib.
+"""
+from pathlib import Path
+import os
+
+# Dataset paths
+DATA_ROOT = Path("data")
+DATASETS_ROOT = DATA_ROOT / "datasets"
+RAW_DIR = DATASETS_ROOT / "{dataset}" / "raw"
+STAGED_DIR = DATASETS_ROOT / "{dataset}" / "staged"
+
+# Database paths
+DB_ROOT = Path("db")
+DATABASE_PATH = DB_ROOT / f"manchego_{os.getenv('MANCHEGO_ENV', 'dev')}.db"
+
+# Log paths
+LOGS_ROOT = DATA_ROOT / "logs"
+LOG_DIR = LOGS_ROOT / "{module}"
+
+# Google Sheets configuration
+RECEIPTS_SHEET_ID = os.getenv("RECEIPTS_SHEET_ID")
+TRANSACTIONS_SHEET_ID = os.getenv("TRANSACTIONS_SHEET_ID")
+```
+
+### Module Config Example
+
+```python
+"""
+Receipt processing module configuration.
+
+Module-specific settings for receipt parsing and validation.
+"""
+# Receipt-specific validation thresholds
+MAX_RECEIPT_SIZE_MB = 10
+SUPPORTED_IMAGE_FORMATS = [".jpg", ".jpeg", ".png", ".pdf"]
+
+# Receipt parsing model settings
+GPT_MODEL = "gpt-4-vision-preview"
+PARSING_TIMEOUT_SECONDS = 30
+```
+
+### ❌ Avoid: Hardcoding in Business Logic
+
+```python
+# In receipts/preprocess.py
+def process_receipt(image_path: str) -> None:
+    raw_dir = Path("data/datasets/receipts/raw")  # ❌ Hardcoded path
+    # ...
+```
+
+### ✅ Prefer: Using Global Config
+
+```python
+# In receipts/preprocess.py
+from manchego import global_config as g
+
+def process_receipt(image_path: str) -> None:
+    raw_dir = g.RAW_DIR.format(dataset="receipts")  # ✅ From global config
+    # ...
+```
+
+### ❌ Avoid: Keeping Module-Specific Config in Global Config
+
+```python
+# In global_config.py
+RECEIPT_MAX_SIZE_MB = 10  # ❌ Only used by receipts module
+```
+
+### ✅ Prefer: Module-Specific Config
+
+```python
+# In receipts/config.py
+MAX_RECEIPT_SIZE_MB = 10  # ✅ Module-specific, stays in module config
+
+# In receipts/preprocess.py
+from manchego.receipts import config as cfg
+
+def validate_receipt(file_path: Path) -> bool:
+    size_mb = file_path.stat().st_size / (1024 * 1024)
+    return size_mb <= cfg.MAX_RECEIPT_SIZE_MB  # ✅ From module config
+```
+
+### Migration Example: Moving from Module to Global Config
+
+**Before (module config):**
+```python
+# receipts/config.py
+RECEIPTS_SHEET_ID = os.getenv("RECEIPTS_SHEET_ID")
+
+# receipts/parse.py
+from manchego.receipts import config as cfg
+sheet_id = cfg.RECEIPTS_SHEET_ID
+```
+
+**After (global config):**
+```python
+# global_config.py
+RECEIPTS_SHEET_ID = os.getenv("RECEIPTS_SHEET_ID")
+
+# receipts/parse.py
+from manchego import global_config as g
+sheet_id = g.RECEIPTS_SHEET_ID
+```
+
+## Import Naming Conventions
+
+- Import `global_config` as `g`: `from manchego import global_config as g`
+- Import local `config.py` as `cfg`: `from manchego.receipts import config as cfg`
+- Use explicit names for other configs: `from manchego.time import config as time_config`
+
+**See Also:**
+- Rule 100: Docstring Standards (config file docstring conventions)
+- Rule 800: File Discovery Pattern (config usage in file discovery)
