@@ -40,6 +40,18 @@ Leave gaps (e.g., 100, 110, 120) to allow inserting new rules without renumberin
 - **Action-oriented**: Use short, direct language: "Use X", "Always Y", "Avoid Z" — not "Consider" or "Maybe"
 - **Concrete examples**: Prefer code snippets over prose descriptions
 
+## When to Decline Rule Creation
+
+Decline creating rules when any of the following conditions are true:
+
+- **Ruff or linter already enforces it**: The pattern is already checked by Ruff, mypy, or another automated tool. Creating a rule duplicates tool enforcement.
+- **One-off situation**: The pattern will not recur. Rules are for recurring decisions, not single instances.
+- **Vague or not actionable**: The request lacks concrete guidance or cannot be expressed as specific, testable instructions. Rules must provide clear "do X" or "avoid Y" directives.
+- **Duplicates existing rule**: An existing rule already covers this pattern. Check existing rules before creating.
+- **Mixes unrelated concerns**: The request combines multiple unrelated topics that should be separate rules. Each rule must have single focus.
+
+See "DON'T" section below for additional anti-patterns.
+
 ## Rule Types & Appropriate Length
 
 Different rule types have different optimal lengths:
