@@ -6,6 +6,8 @@ description: AI-optimized git commit workflow with adaptive detail based on chan
 
 AI-optimized commit workflow with adaptive detail based on change complexity. Human-readable first line, rest optimized for AI review.
 
+**Output Mode**: All intermediate git commands run silently. Only final summary or errors are displayed to reduce noise.
+
 ## Adaptive Strategy
 
 - **Small changes** (1-3 files, trivial/simple): Brief commit (50-100 words)
@@ -15,45 +17,56 @@ AI-optimized commit workflow with adaptive detail based on change complexity. Hu
 
 ## Phase 1: Safety Checks
 
-Run these checks **in order** and handle appropriately:
+Run these checks **in order** silently, only outputting warnings/errors:
 
 ### Check 1: Uncommitted Changes
 ```bash
-git status --porcelain
+git status --porcelain 2>/dev/null
 ```
 - If output is empty: "No changes to commit. Working directory is clean." (exit gracefully)
-- If changes exist: Continue to next check
+- If changes exist: Continue silently to next check
 
 ### Check 2: Remote Sync Status
 ```bash
-git fetch
-git status
+git fetch >/dev/null 2>&1
+git status --porcelain 2>/dev/null
 ```
+- Capture status output, check if behind remote
 - If behind remote: **BLOCK** - "⚠️ Behind remote. Pull first with `git pull`"
 - Wait for user instruction before proceeding
+- Otherwise: Continue silently
 
 ### Check 3: Merge Conflicts
 ```bash
-git diff --name-only --diff-filter=U
+git diff --name-only --diff-filter=U 2>/dev/null
 ```
 - If conflicts exist: **BLOCK** - "⚠️ Unresolved merge conflicts. Resolve first."
 - Wait for user instruction before proceeding
+- Otherwise: Continue silently
 
 ### Check 4: Secret Files Detection (Warning Only)
-Check for untracked files matching: `.env`, `*.key`, `*credentials*`, `*secret*`, `*token*`
+```bash
+git status --porcelain | grep -E '\.(env|key|credentials|secret|token)' 2>/dev/null || true
+```
+- Capture output silently
 - If found: **WARN** - "⚠️ Potential secrets detected: [list files]. Confirm these are safe?"
 - Wait for confirmation, then proceed
+- Otherwise: Continue silently
 
 ### Check 5: Large Changeset (Info Only)
 ```bash
-git status --porcelain | wc -l
+git status --porcelain | wc -l | tr -d ' '
 ```
+- Capture count silently
 - If >20 files: **INFO** - "Large changeset ([N] files). Proceeding with detailed commit."
 - Continue (informational only)
 
 ### Check 6: Test Coverage (Warning Only)
-- Code files: `git diff --name-only | grep -E '\.(py|js|ts)$'`
-- Test files: `git diff --name-only | grep -E '(test_|_test\.|spec\.)'`
+```bash
+git diff --name-only --cached 2>/dev/null | grep -E '\.(py|js|ts)$' || true
+git diff --name-only --cached 2>/dev/null | grep -E '(test_|_test\.|spec\.)' || true
+```
+- Capture output silently
 - If code changed but no tests: **WARN** - "⚠️ Code modified but no tests changed. Intentional?"
 - Continue (don't block)
 
@@ -61,11 +74,11 @@ git status --porcelain | wc -l
 
 ### Count Changes
 ```bash
-# Files changed
-git status --porcelain | wc -l
+# Files changed (capture silently)
+git status --porcelain 2>/dev/null | wc -l | tr -d ' '
 
-# Lines changed
-git diff --stat | tail -1
+# Lines changed (capture silently)
+git diff --stat 2>/dev/null | tail -1
 ```
 
 ### Classify Change Type
@@ -83,20 +96,23 @@ Review conversation for indicators:
 
 ## Phase 3: Analyze Changes
 
+Run all commands silently, capture output internally:
+
 1. **Get file-level overview**: 
    ```bash
-   git status --porcelain
-   git diff --stat
+   git status --porcelain 2>/dev/null
+   git diff --stat 2>/dev/null
    ```
 
 2. **Get actual changes**: 
    ```bash
-   git diff
+   git diff 2>/dev/null
    ```
+   (or `git diff --cached` if files already staged)
 
 3. **Get previous context**: 
    ```bash
-   git log -1 --oneline
+   git log -1 --oneline 2>/dev/null
    ```
 
 4. **Extract session insights** (only for complex sessions with large/medium changes):
@@ -165,17 +181,23 @@ Review conversation for indicators:
 
 ## Phase 5: Execute Git Commands
 
-**Execute directly without user confirmation:**
+**Execute directly without user confirmation, suppress output:**
 
 ```bash
-git add -A
-git commit -m "[full message]"
-git push
+git add -A >/dev/null 2>&1
+COMMIT_OUTPUT=$(git commit -m "[full message]" 2>&1)
+COMMIT_HASH=$(git log -1 --format=%H 2>/dev/null)
+PUSH_OUTPUT=$(git push 2>&1)
 ```
 
-**Success response**: "✓ Committed and pushed [hash]: [summary line]"
+**Success response**: Only show final summary - "✓ Committed and pushed [hash]: [summary line]"
 
-**Push failure**: Show exact error message and suggest next steps (e.g., `git pull`, resolve conflicts)
+**Error handling**: 
+- Capture all command output but don't display it
+- Extract commit hash from `git log -1 --format=%H` after successful commit
+- If commit fails: Parse `COMMIT_OUTPUT` and show error message only
+- If push fails: Parse `PUSH_OUTPUT` and show exact error with suggested next steps
+- Only display final summary on success, or error message on failure
 
 ## Error Handling
 
@@ -191,4 +213,5 @@ git push
 4. **Selective insights**: Only extract for genuinely complex sessions
 5. **Direct execution**: Execute commit immediately when command is invoked (no confirmation needed)
 6. **Rule references**: Always include when patterns from `.cursor/rules/` applied
+7. **Quiet mode**: Suppress all intermediate output, only show final summary or errors
 
