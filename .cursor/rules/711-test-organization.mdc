@@ -1,0 +1,409 @@
+---
+description: Patterns for organizing tests into files, using markers, and structuring test modules
+globs:
+  - "tests/**/*.py"
+alwaysApply: false
+---
+
+# Test Organization
+
+Organize tests for clarity, maintainability, and efficient discovery. Follow consistent patterns for file structure, markers, and grouping.
+
+## File Organization
+
+### Mirror Package Structure
+
+Tests should mirror the source code structure:
+
+```
+manchego/
+├── receipts/
+│   ├── intake.py
+│   └── preprocess.py
+└── ledger/
+    └── statements.py
+
+tests/
+├── receipts/
+│   ├── test_intake.py      # Mirrors receipts/intake.py
+│   └── test_preprocess.py   # Mirrors receipts/preprocess.py
+└── ledger/
+    └── test_statements.py   # Mirrors ledger/statements.py
+```
+
+### When to Split Large Test Files
+
+Split test files when:
+- File exceeds ~500-800 lines (becomes hard to navigate)
+- Testing multiple distinct modules in one file
+- Different fixtures needed for different test groups
+- File tests multiple unrelated behaviors
+
+**Keep together when:**
+- All tests share same autouse fixtures
+- Tests cover related functionality
+- File is under 500 lines
+
+### CLI Test Organization
+
+- `tests/cli/test_main.py`: Integration tests (command registration, wiring)
+- `tests/cli/test_[domain].py`: Domain-specific CLI tests (e.g., `test_receipts.py`)
+
+## Test File Structure
+
+### Standard Test File Template
+
+```python
+# tests/<module>/test_<file>.py
+# Tests <brief description of module functionality>.
+
+import pytest
+
+import manchego.<module>.<file> as target_module
+
+
+@pytest.fixture(autouse=True)
+def _redirect_module_dirs(tmp_path, monkeypatch):
+    """
+    Redirect all module directories to tmp_path to prevent touching real data.
+    
+    Redirects:
+    - MODULE_RAW_DIR (input)
+    - MODULE_STAGED_DIR (output)
+    """
+    # ... fixture implementation ...
+    return {"raw": raw_dir, "staged": staged_dir}
+
+
+# Group related tests together with comments
+# ============================================================================
+# DISCOVERY TESTS
+# ============================================================================
+
+def test_discover_filters_hidden_files(tmp_path, touch):
+    """Test file discovery excludes hidden files."""
+    # ...
+
+
+def test_discover_respects_root_parameter(tmp_path, touch):
+    """Test discovery uses explicit root parameter."""
+    # ...
+
+
+# ============================================================================
+# PROCESSING TESTS
+# ============================================================================
+
+def test_process_file__returns_success_dict(tmp_path, touch):
+    """Test processing returns standardized success dict."""
+    # ...
+
+
+def test_process_file__handles_errors(tmp_path, touch):
+    """Test processing handles errors gracefully."""
+    # ...
+```
+
+## Pytest Markers
+
+Use markers to categorize and filter tests:
+
+### Standard Markers
+
+```python
+# In conftest.py or pytest.ini
+@pytest.mark.slow  # Mark slow tests
+@pytest.mark.integration  # Mark integration tests
+@pytest.mark.unit  # Mark unit tests
+```
+
+### Custom Markers
+
+Define custom markers in `pytest.ini` or `pyproject.toml`:
+
+```python
+# pyproject.toml
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "cli: marks tests as CLI tests",
+]
+```
+
+### Using Markers
+
+```python
+@pytest.mark.slow
+def test_large_dataset_processing(tmp_path):
+    """Test processing large dataset (slow)."""
+    # ... slow test ...
+
+@pytest.mark.integration
+def test_end_to_end_workflow(tmp_path):
+    """Test complete workflow (integration test)."""
+    # ... integration test ...
+```
+
+### Running Tests by Marker
+
+```bash
+# Run only fast tests
+pytest -m "not slow"
+
+# Run only integration tests
+pytest -m integration
+
+# Run CLI tests only
+pytest -m cli tests/cli/
+```
+
+## Test Discovery Patterns
+
+### Test Function Naming
+
+- Use `test_` prefix for all test functions
+- Follow pattern: `test_<behavior>__<condition>` (double underscore)
+- Be descriptive but concise
+
+```python
+# Good names
+def test_discover_filters_hidden_files():
+def test_process_file__returns_error_on_invalid_format():
+def test_sort_files__case_insensitive():
+
+# Avoid
+def test_discover():  # Too vague
+def test_process_file_returns_error_on_invalid_format():  # Too long, no separation
+```
+
+### Test Discovery
+
+Pytest automatically discovers tests:
+- Files matching `test_*.py` or `*_test.py`
+- Functions matching `test_*`
+- Classes matching `Test*`
+
+### Organizing Within Test Files
+
+Group related tests with comments:
+
+```python
+# ============================================================================
+# FILE DISCOVERY
+# ============================================================================
+
+def test_discover_filters_hidden():
+    """Test discovery excludes hidden files."""
+    pass
+
+def test_discover_respects_root():
+    """Test discovery uses root parameter."""
+    pass
+
+
+# ============================================================================
+# FILE PROCESSING
+# ============================================================================
+
+def test_process_single_file():
+    """Test processing single file."""
+    pass
+
+def test_process_batch_files():
+    """Test processing batch of files."""
+    pass
+```
+
+## Test Class Organization (Optional)
+
+Use test classes when:
+- Multiple tests share complex setup
+- Testing a single class with many methods
+- Grouping related tests for clarity
+
+```python
+class TestFileDiscovery:
+    """Tests for file discovery functionality."""
+    
+    def test_filters_hidden_files(self, tmp_path, touch):
+        """Test discovery excludes hidden files."""
+        # ...
+    
+    def test_respects_root_parameter(self, tmp_path, touch):
+        """Test discovery uses root parameter."""
+        # ...
+
+
+class TestFileProcessing:
+    """Tests for file processing functionality."""
+    
+    def test_process_single_file(self, tmp_path, touch):
+        """Test processing single file."""
+        # ...
+    
+    def test_process_handles_errors(self, tmp_path, touch):
+        """Test error handling."""
+        # ...
+```
+
+**Note**: Most tests in manchego don't need classes. Use classes only when they add clear value.
+
+## Fixture Organization
+
+### Shared Fixtures
+
+Place shared fixtures in `tests/conftest.py`:
+
+```python
+# tests/conftest.py
+@pytest.fixture
+def touch(tmp_path):
+    """Create file at any path."""
+    # ...
+
+@pytest.fixture
+def make_files(tmp_path):
+    """Bulk-create files."""
+    # ...
+```
+
+### Module-Specific Fixtures
+
+Place module-specific fixtures in test file or `tests/<module>/conftest.py`:
+
+```python
+# tests/receipts/conftest.py
+@pytest.fixture
+def receipts_test_data(tmp_path, touch):
+    """Create sample receipt data for testing."""
+    # ...
+```
+
+### Autouse Fixtures
+
+Use autouse fixtures for automatic isolation (Rule 706):
+
+```python
+@pytest.fixture(autouse=True)
+def _redirect_module_dirs(tmp_path, monkeypatch):
+    """Redirect all module directories to tmp_path."""
+    # ... runs automatically for all tests in file ...
+```
+
+## Test Grouping Strategies
+
+### By Functionality
+
+Group tests by what they test:
+
+```python
+# All discovery tests together
+def test_discover_...():
+def test_discover_...():
+
+# All processing tests together  
+def test_process_...():
+def test_process_...():
+```
+
+### By Input Type
+
+Group tests by input variations:
+
+```python
+# Tests for different file types
+def test_process_jpeg():
+def test_process_png():
+def test_process_invalid():
+```
+
+### By Behavior
+
+Group tests by behavior being tested:
+
+```python
+# Success cases
+def test_process__success():
+def test_process__returns_dict():
+
+# Error cases
+def test_process__invalid_format():
+def test_process__missing_file():
+```
+
+## Examples
+
+❌ **Avoid - Disorganized test file:**
+
+```python
+# tests/receipts/test_intake.py
+def test_discover():
+    pass
+
+def test_process():
+    pass
+
+def test_discover_hidden():
+    pass
+
+def test_process_error():
+    pass
+```
+
+✅ **Prefer - Organized test file:**
+
+```python
+# tests/receipts/test_intake.py
+# Tests receipt file discovery and intake functionality.
+
+import pytest
+
+import manchego.receipts.intake as intake
+
+
+@pytest.fixture(autouse=True)
+def _redirect_receipt_dirs(tmp_path, monkeypatch):
+    """Redirect receipt directories to tmp_path."""
+    # ...
+
+
+# ============================================================================
+# FILE DISCOVERY
+# ============================================================================
+
+def test_discover_filters_hidden_files(tmp_path, touch):
+    """Test discovery excludes hidden files."""
+    # ...
+
+
+def test_discover_respects_root_parameter(tmp_path, touch):
+    """Test discovery uses explicit root parameter."""
+    # ...
+
+
+# ============================================================================
+# FILE PROCESSING
+# ============================================================================
+
+def test_process_file__returns_success_dict(tmp_path, touch):
+    """Test processing returns standardized success dict."""
+    # ...
+
+
+def test_process_file__handles_invalid_format(tmp_path, touch):
+    """Test processing handles invalid format gracefully."""
+    # ...
+```
+
+## Required Reading
+
+- **Rule 700**: Testing Standards - foundation for all testing (test structure)
+- **Rule 706**: Autouse Directory Isolation - autouse fixture patterns
+
+## See Also
+
+- Rule 701: CLI Testing - CLI test organization patterns
+- Rule 709: Test Parametrization - organizing parametrized tests
+- Rule 712: Assertion Patterns - assertion patterns used in organized tests

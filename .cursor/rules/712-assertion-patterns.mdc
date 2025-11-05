@@ -1,0 +1,293 @@
+---
+description: Assertion patterns and best practices for testing business logic and error handling
+globs:
+  - "tests/**/*.py"
+alwaysApply: false
+---
+
+# Assertion Patterns
+
+Clear, focused assertions make tests easier to understand and debug. Use appropriate assertion patterns for different scenarios.
+
+## When to Use pytest.raises vs Return Values
+
+**Use `pytest.raises`** when:
+- Function raises exception on error (legacy pattern)
+- Testing that invalid input causes exception
+- Exception IS the expected behavior
+
+**Use return value assertions** when:
+- Function returns dict with `success`/`error` keys (Rule 605 pattern)
+- Testing business logic that handles errors gracefully
+- Error details are in return dict, not exception
+
+## Pattern 1: pytest.raises for Exceptions
+
+Use when function raises exceptions:
+
+```python
+def test_validates_empty_string():
+    """Test validation raises ValueError for empty string."""
+    with pytest.raises(ValueError, match="cannot be empty"):
+        validate_input("")
+```
+
+With message matching:
+
+```python
+def test_validates_invalid_format():
+    """Test validation raises with specific error message."""
+    with pytest.raises(ValueError) as exc_info:
+        validate_input("invalid")
+    
+    assert "invalid format" in str(exc_info.value).lower()
+```
+
+## Pattern 2: Assert Return Dict (Rule 605)
+
+For functions returning standardized dict structures (Rule 605):
+
+```python
+def test_process_file__returns_success_dict(tmp_path, touch):
+    """Test function returns standardized success dict."""
+    file = touch(tmp_path / "test.jpg", b"image data")
+    
+    result = process_file(file)
+    
+    # Assert standardized structure
+    assert result["success"] is True
+    assert result["item"] == "test.jpg"
+    assert "result" in result
+```
+
+For error cases:
+
+```python
+def test_process_file__returns_error_dict(tmp_path, touch):
+    """Test function returns standardized error dict."""
+    # Create invalid file
+    file = touch(tmp_path / "invalid.txt", b"not an image")
+    
+    result = process_file(file)
+    
+    # Assert standardized error structure
+    assert result["success"] is False
+    assert result["item"] == "invalid.txt"
+    assert "error" in result
+    assert len(result["error"]) > 0  # Error message present
+```
+
+## Pattern 3: Asserting on Batch Operations
+
+For functions returning batch operation results:
+
+```python
+def test_process_all__returns_complete_stats(tmp_path, touch):
+    """Test batch operation returns complete statistics."""
+    make_files(["file1.jpg", "file2.jpg", "file3.jpg"])
+    
+    result = process_all()
+    
+    # Assert all required keys present
+    assert "success" in result
+    assert "total" in result
+    assert "succeeded" in result
+    assert "failed" in result
+    
+    # Assert counts are consistent
+    assert result["total"] == result["succeeded"] + result["failed"]
+    assert result["total"] == 3
+    
+    # Assert success flag matches reality
+    assert result["success"] == (result["failed"] == 0)
+```
+
+## Pattern 4: Asserting on Collections
+
+For lists, sets, and other collections:
+
+```python
+def test_discover_files__filters_hidden(tmp_path, touch):
+    """Test file discovery excludes hidden files."""
+    touch(tmp_path / "visible.jpg")
+    touch(tmp_path / ".hidden.jpg")
+    
+    paths = discover_files(root=tmp_path)
+    
+    # Assert length
+    assert len(paths) == 1
+    
+    # Assert content
+    assert paths[0].name == "visible.jpg"
+    
+    # Assert no hidden files
+    assert not any(p.name.startswith(".") for p in paths)
+```
+
+For ordering:
+
+```python
+def test_sort_files__case_insensitive(tmp_path, touch):
+    """Test files sorted case-insensitively."""
+    touch(tmp_path / "C.jpg")
+    touch(tmp_path / "a.jpg")
+    touch(tmp_path / "B.jpg")
+    
+    paths = sort_files(root=tmp_path)
+    
+    # Assert sorted by lowercase name
+    assert [p.name.lower() for p in paths] == ["a.jpg", "b.jpg", "c.jpg"]
+```
+
+## Pattern 5: Asserting with Custom Messages
+
+Add helpful messages when assertion might be unclear:
+
+```python
+def test_process_multiple_files(tmp_path, touch):
+    """Test processing multiple files."""
+    files = make_files(["file1.jpg", "file2.jpg", "file3.jpg"])
+    
+    result = process_all()
+    
+    # Use custom message for clarity
+    assert result["succeeded"] == 3, f"Expected 3 succeeded, got {result['succeeded']}"
+    assert result["failed"] == 0, f"Expected 0 failed, got {result['failed']}"
+```
+
+## Pattern 6: Asserting on Partial Matches
+
+For strings, check substrings rather than exact matches:
+
+```python
+def test_error_message__contains_details(tmp_path, touch):
+    """Test error message contains helpful details."""
+    file = touch(tmp_path / "invalid.txt", b"bad data")
+    
+    result = process_file(file)
+    
+    # Assert error message contains key information
+    assert result["success"] is False
+    assert "invalid" in result["error"].lower()
+    assert file.name in result["error"]  # Filename in error
+```
+
+## Pattern 7: Asserting with pytest.raises and Context
+
+When you need to verify both exception and side effects:
+
+```python
+def test_process_file__rolls_back_on_error(tmp_path, touch):
+    """Test that processing error doesn't leave partial state."""
+    file = touch(tmp_path / "bad.jpg", b"corrupt data")
+    
+    with pytest.raises(ProcessingError):
+        process_file(file)
+    
+    # Verify cleanup happened despite exception
+    assert not (tmp_path / "processed" / "bad.jpg").exists()
+    assert not (tmp_path / "staged" / "bad.jpg").exists()
+```
+
+## Common Assertion Patterns
+
+### Pattern 1: Asserting Return Dict Keys
+
+```python
+# Verify all expected keys present
+required_keys = ["success", "total", "succeeded", "failed"]
+assert all(key in result for key in required_keys), f"Missing keys in {result}"
+```
+
+### Pattern 2: Asserting on None vs Empty
+
+```python
+# Distinguish None from empty list
+assert result["failures"] is not None  # Key exists
+assert len(result["failures"]) == 0    # Empty list, not None
+```
+
+### Pattern 3: Asserting on Type
+
+```python
+# Verify return type is correct
+assert isinstance(result, dict)
+assert isinstance(result["total"], int)
+assert isinstance(result["elapsed_s"], (int, float))
+```
+
+### Pattern 4: Asserting Timestamps
+
+```python
+# Test timestamp format (Rule 700 pattern)
+iso_timestamp = result["timestamp"]
+assert "T" in iso_timestamp
+assert iso_timestamp.endswith("+00:00")  # UTC
+```
+
+## Assertion Helpers (Optional)
+
+For common assertion patterns, consider helpers:
+
+```python
+def assert_success_dict(result: dict, expected_keys: list[str] = None):
+    """Assert result is a valid success dict."""
+    assert result["success"] is True
+    assert "total" in result
+    if expected_keys:
+        assert all(key in result for key in expected_keys)
+
+def assert_error_dict(result: dict, item: str = None):
+    """Assert result is a valid error dict."""
+    assert result["success"] is False
+    assert "error" in result
+    if item:
+        assert item in result.get("item", "")
+```
+
+Usage:
+
+```python
+def test_process_returns_valid_dict(tmp_path, touch):
+    """Test processing returns valid success dict."""
+    file = touch(tmp_path / "test.jpg", b"data")
+    result = process_file(file)
+    
+    assert_success_dict(result, expected_keys=["item", "result"])
+```
+
+## Examples
+
+❌ **Avoid - Vague assertions:**
+
+```python
+def test_process():
+    result = process_file("test.jpg")
+    assert result  # What does this test?
+    assert result.ok  # Unclear what "ok" means
+```
+
+✅ **Prefer - Clear, specific assertions:**
+
+```python
+def test_process_file__returns_success(tmp_path, touch):
+    """Test processing returns success dict."""
+    file = touch(tmp_path / "test.jpg", b"image data")
+    
+    result = process_file(file)
+    
+    # Clear assertions with context
+    assert result["success"] is True
+    assert result["item"] == "test.jpg"
+    assert "result" in result
+```
+
+## Required Reading
+
+- **Rule 700**: Testing Standards - common assertion patterns
+- **Rule 605**: Business Return Structures - standard return dict structure
+
+## See Also
+
+- Rule 709: Test Parametrization - combining assertions with parametrization
+- Rule 708: Test Migration Patterns - updating assertions during refactors

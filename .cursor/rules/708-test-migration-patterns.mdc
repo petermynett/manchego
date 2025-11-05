@@ -7,9 +7,9 @@ alwaysApply: false
 
 # Test Migration Patterns
 
-When refactoring code, tests must be updated systematically. This rule provides checklists and patterns for common migration scenarios.
+When refactoring code, tests must be updated systematically. This rule provides checklists and patterns for common migration scenarios in **business logic tests**.
 
-**Note**: For CLI-specific test patterns, see **Rule 701**. For mocking consistency, see **Rule 704**.
+**Note**: For CLI-specific test migration patterns (mocking CLI commands, updating CLI test assertions), see **Rule 704: CLI Mocking Consistency**. For general CLI testing patterns, see **Rule 701**.
 
 ## When to Use This Rule
 
@@ -315,5 +315,5 @@ mock.return_value = {
 ## See Also
 
 - Rule 701: CLI Testing Patterns - CLI-specific patterns that may need migration
-- Rule 704: CLI Mocking Consistency - where to mock after signature changes
+- **Rule 704: CLI Mocking Consistency** - CLI-specific migration patterns (updating CLI test mocks, operation_id handling)
 - Rule 605: Business Return Structures - standard return dict structure

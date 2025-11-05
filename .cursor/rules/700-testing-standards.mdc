@@ -27,9 +27,10 @@ alwaysApply: false
 
 - `touch(p: Path, content: bytes = b"test") -> Path`: create file at any path
 - `make_files(names: list[str]) -> list[Path]`: bulk-create files under `tmp_path`
-- `receipts_test_config`: redirect receipt directories to `tmp_path`
 - `fake_sheets`: in-memory Google Sheets double with `.append()`, `.get_values()`
 - `fake_openai_factory`: returns configurable OpenAI API fake
+
+**Directory Isolation**: Use autouse fixtures (Rule 706) to redirect module directories. The `receipts_test_config` fixture pattern is deprecated in favor of autouse fixtures.
 
 Always pass fixtures as function arguments; never import them directly.
 
@@ -165,6 +166,9 @@ This rule provides the foundation for all testing. For specific patterns:
 - Rule 706: Autouse Directory Isolation - automatic isolation
 - Rule 707: Mocking Logs in Tests - log mocking patterns
 - Rule 708: Test Migration Patterns - updating tests after refactors
+- Rule 709: Test Parametrization - using pytest.mark.parametrize effectively
+- Rule 711: Test Organization - organizing tests into files and using markers
+- Rule 712: Assertion Patterns - assertion best practices
 
 ## Test Type Decision Tree (For NEW Tests)
 
@@ -228,3 +232,11 @@ What are you testing?
 3. **Integration**: Light coverage (least stable, easy to verify manually)
 
 **See Rule 701 for CLI testing patterns, Rule 706 for autouse isolation fixtures.**
+
+## Future Work
+
+**TODO**: Add test data factory patterns when more examples exist. This should cover:
+- Creating reusable test data generators
+- Factories for common data structures
+- Edge case data generation
+- When to use fixtures vs factories

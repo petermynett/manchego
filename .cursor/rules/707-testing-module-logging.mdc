@@ -87,8 +87,6 @@ import logging
 
 def test_audit_trail_logs_operation_id(caplog):
     """RARE: Test critical audit trail includes operation_id."""
-
-```python
     import logging
     caplog.set_level(logging.INFO)
     
@@ -122,64 +120,6 @@ def test_audit_trail_logs_operation_id(caplog):
 - Critical audit trail
 - Logging IS the business logic
 - Compliance/security requirement
-
-## Deprecated: Old "Testing Log Content" Examples
-
-The following examples were in the original Rule 707 but are **NOT RECOMMENDED** for most tests. They test logging infrastructure instead of business logic:
-
-<details>
-<summary>Click to see deprecated examples (don't use these)</summary>
-
-```python
-def test_function__basic_smoke(caplog):
-    """Quick check that function runs and logs something."""
-    import logging
-    caplog.set_level(logging.INFO)
-    
-    result = module.function(operation_id="test")
-    
-    # Just verify SOME logging happened
-    assert len(caplog.records) > 0
-    
-    # Verify operation_id in at least one log
-    assert any(hasattr(r, 'operation_id') for r in caplog.records)
-```
-
-## Common Patterns
-
-### Pattern 1: Verify operation_id Auto-Generation
-```python
-# Function should generate operation_id if None
-result = function(operation_id=None)
-assert any(hasattr(r, 'operation_id') for r in caplog.records)
-```
-
-### Pattern 2: Verify operation_id Consistency
-```python
-# All logs should have same operation_id
-result = function(operation_id="test_123")
-op_ids = [r.operation_id for r in caplog.records if hasattr(r, 'operation_id')]
-assert all(op_id == "test_123" for op_id in op_ids)
-```
-
-### Pattern 3: Verify Log Level
-```python
-# Errors should be at ERROR level
-error_logs = [r for r in caplog.records if r.levelname == "ERROR"]
-assert len(error_logs) == expected_count
-```
-
-### When NOT to Test Logging
-
-Skip logging tests for:
-- Simple utility functions
-- Functions that don't process multiple items
-- Functions with minimal logging
-- Quick helper functions
-
-**Focus testing on business logic. Logging is infrastructure.**
-
-</details>
 
 ## Required Reading
 

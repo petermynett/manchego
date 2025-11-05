@@ -1,0 +1,234 @@
+---
+description: Patterns for using pytest.mark.parametrize effectively to reduce test duplication
+globs:
+  - "tests/**/*.py"
+alwaysApply: false
+---
+
+# Test Parametrization Patterns
+
+Use `pytest.mark.parametrize` to test multiple scenarios with a single test function, reducing duplication while maintaining clarity.
+
+## When to Parametrize vs Separate Tests
+
+**Parametrize when:**
+- Testing same behavior with different inputs/outputs
+- Testing edge cases of the same function
+- Testing validation logic with multiple invalid inputs
+- Testing formatting/transformation with multiple data variations
+
+**Separate tests when:**
+- Different behaviors or code paths
+- Complex setup differs significantly between cases
+- One test failure shouldn't hide others (though pytest shows all failures)
+- Test names become unclear with parametrization
+
+## Basic Pattern
+
+```python
+@pytest.mark.parametrize("input,expected", [
+    (1, 2),
+    (2, 4),
+    (10, 20),
+])
+def test_double_function(input, expected):
+    """Test doubling function with multiple inputs."""
+    assert double(input) == expected
+```
+
+## Descriptive IDs
+
+Always use `ids=` to make test output readable:
+
+```python
+@pytest.mark.parametrize("filename", ["A.jpg", "b.jpg"], ids=["uppercase", "lowercase"])
+def test_sorting_is_case_insensitive(tmp_path, touch, filename):
+    """Verify case-insensitive sorting."""
+    touch(tmp_path / filename)
+    paths = target_module.discover(root=tmp_path)
+    assert [p.name.lower() for p in paths] == sorted([p.name.lower() for p in paths])
+```
+
+**Without `ids=`:**
+```
+test_sorting_is_case_insensitive[A.jpg] PASSED
+test_sorting_is_case_insensitive[b.jpg] PASSED
+```
+
+**With `ids=`:**
+```
+test_sorting_is_case_insensitive[uppercase] PASSED
+test_sorting_is_case_insensitive[lowercase] PASSED
+```
+
+## Multiple Parameters
+
+When testing combinations of multiple parameters:
+
+```python
+@pytest.mark.parametrize("limit,force,expected_count", [
+    (None, False, 10),      # Default: all files
+    (5, False, 5),          # Limited to 5
+    (None, True, 10),       # Force reprocess all
+    (3, True, 3),           # Force reprocess 3
+], ids=["default", "limit_5", "force_all", "force_3"])
+def test_preprocess_with_options(tmp_path, touch, limit, force, expected_count):
+    """Test preprocessing with various limit and force combinations."""
+    # Create 10 test files
+    make_files([f"file{i}.jpg" for i in range(10)])
+    
+    result = preprocess.preprocess_all(limit=limit, force=force)
+    
+    assert result["total"] == expected_count
+```
+
+## Parametrize with Fixtures
+
+You can combine parametrization with fixtures:
+
+```python
+@pytest.mark.parametrize("file_content", [
+    b"valid image data",
+    b"another valid image",
+], ids=["image1", "image2"])
+def test_process_image(tmp_path, touch, file_content):
+    """Test image processing with different content."""
+    img = touch(tmp_path / "test.jpg", file_content)
+    result = process_image(img)
+    assert result["success"] is True
+```
+
+## Parametrize with Expected Exceptions
+
+Test that specific inputs raise expected exceptions:
+
+```python
+@pytest.mark.parametrize("invalid_input,expected_error", [
+    ("", ValueError),
+    (None, TypeError),
+    (-1, ValueError),
+], ids=["empty_string", "none", "negative"])
+def test_validate_raises_errors(invalid_input, expected_error):
+    """Test validation raises correct exceptions."""
+    with pytest.raises(expected_error):
+        validate_input(invalid_input)
+```
+
+## Parametrize with Complex Data
+
+For testing complex data structures:
+
+```python
+@pytest.mark.parametrize("config,expected_output", [
+    ({"format": "jpeg", "quality": 90}, {"mime": "image/jpeg"}),
+    ({"format": "png", "quality": None}, {"mime": "image/png"}),
+], ids=["jpeg_high_quality", "png_no_quality"])
+def test_image_conversion(config, expected_output, tmp_path, touch):
+    """Test image conversion with different configs."""
+    img = touch(tmp_path / "test.jpg", b"image data")
+    result = convert_image(img, **config)
+    assert result["mime"] == expected_output["mime"]
+```
+
+## Common Patterns
+
+### Pattern 1: Testing Multiple Input Types
+
+```python
+@pytest.mark.parametrize("input_type", [
+    Path("/tmp/test.jpg"),
+    "test.jpg",
+    b"test.jpg",
+], ids=["Path_object", "string", "bytes"])
+def test_accepts_multiple_input_types(input_type):
+    """Test function accepts Path, str, or bytes."""
+    result = process_input(input_type)
+    assert result["success"] is True
+```
+
+### Pattern 2: Testing Error Cases
+
+```python
+@pytest.mark.parametrize("bad_input,error_message", [
+    ("", "empty string"),
+    ("invalid", "invalid format"),
+    ("missing.jpg", "file not found"),
+], ids=["empty", "invalid_format", "missing_file"])
+def test_handles_errors(tmp_path, bad_input, error_message):
+    """Test error handling for various invalid inputs."""
+    result = process_file(bad_input)
+    assert result["success"] is False
+    assert error_message in result["error"].lower()
+```
+
+### Pattern 3: Testing Return Dict Structure (Rule 605)
+
+```python
+@pytest.mark.parametrize("succeeded,failed,expected_success", [
+    (5, 0, True),      # All succeeded
+    (3, 2, False),    # Some failed
+    (0, 5, False),   # All failed
+], ids=["all_success", "partial_failure", "all_failure"])
+def test_return_structure(tmp_path, touch, succeeded, failed, expected_success):
+    """Test standardized return dict structure."""
+    # Setup test data
+    make_files([f"file{i}.jpg" for i in range(succeeded + failed)])
+    
+    result = process_files()
+    
+    assert result["success"] == expected_success
+    assert result["succeeded"] == succeeded
+    assert result["failed"] == failed
+    assert result["total"] == succeeded + failed
+```
+
+## Avoiding Over-Parametrization
+
+❌ **Avoid - Too many parameters making test unclear:**
+
+```python
+@pytest.mark.parametrize("a,b,c,d,e,expected", [
+    (1, 2, 3, 4, 5, 15),
+    (2, 3, 4, 5, 6, 20),
+])
+def test_complex_calculation(a, b, c, d, e, expected):
+    # Hard to understand what's being tested
+    assert calculate(a, b, c, d, e) == expected
+```
+
+✅ **Prefer - Clear, focused parametrization:**
+
+```python
+@pytest.mark.parametrize("numbers,expected_sum", [
+    ([1, 2, 3, 4, 5], 15),
+    ([2, 3, 4, 5, 6], 20),
+], ids=["small_numbers", "medium_numbers"])
+def test_sum_calculation(numbers, expected_sum):
+    """Test sum calculation with different number sets."""
+    assert sum(numbers) == expected_sum
+```
+
+## Migration Pattern: Updating Parametrized Tests
+
+When updating parametrized tests after refactoring (see Rule 708):
+
+```python
+@pytest.mark.parametrize("args,expected_call", [
+    (["process"], {"limit": None}),
+    (["process", "--limit", "5"], {"limit": 5}),
+])
+def test_parses_args(mocker, args, expected_call):
+    # CRITICAL: Add new parameter to expected_call dict
+    expected_call["operation_id"] = "test_id"  # Don't forget this!
+    mock.assert_called_once_with(**expected_call)
+```
+
+## Required Reading
+
+- **Rule 700**: Testing Standards - foundation for all testing (mentions parametrization)
+- **Rule 708**: Test Migration Patterns - updating parametrized tests during refactors
+
+## See Also
+
+- Rule 712: Assertion Patterns - assertion patterns used in parametrized tests
+- Rule 605: Business Return Structures - testing standardized return dicts

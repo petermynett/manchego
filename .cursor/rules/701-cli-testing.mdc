@@ -242,3 +242,11 @@ def mock_transactions_audit(mocker):
 - Rule 612: CLI Command Pattern - implementation pattern being tested
 - Rule 706: Autouse Directory Isolation - automatic directory isolation for tests
 - Rule 708: Test Migration Patterns - how to update these tests during refactors
+
+## Future Work
+
+**TODO**: Expand integration test patterns when CLI infrastructure is more built out. This should cover:
+- Testing command registration and wiring in detail
+- Testing subcommand availability
+- Testing help text generation
+- More comprehensive integration test examples
