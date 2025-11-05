@@ -19,6 +19,26 @@ Use these patterns when you:
 - Rename functions or modules
 - Refactor function behavior significantly
 
+## Test Failure Triage
+
+When a test fails, use this checklist before changing code or test:
+
+1. **Reproduce in isolation**: Run just this test (`pytest path::test_name -q`)
+   - If passes alone but fails in suite → test isolation issue (fixture leakage)
+   - If fails alone → proceed to next step
+
+2. **Compare to spec**: Does current behavior violate documented requirement?
+   - If yes → code is wrong, fix code
+   - If spec says otherwise → test is wrong, fix test
+   - If spec is unclear → clarify spec first, then decide
+
+3. **Check preconditions**: Is test setup correct (fixtures, temp dirs, env vars)?
+   - If not → fix test setup, not code
+
+**Red flag**: If changing the test would change user-visible behavior → you're rewriting the spec. Treat as product decision, document why with comments.
+
+**Documentation**: Always add comments explaining WHY a test was changed (API misunderstood, behavior changed, etc.).
+
 ## Migration Pattern 1: Adding Parameter to Function
 
 **Scenario**: Added `operation_id` parameter to business functions
@@ -262,6 +282,7 @@ After any migration:
 - [ ] No linter errors: `ruff check tests/`
 - [ ] Searched for old patterns: `grep -r "old_pattern" tests/`
 - [ ] Updated docstrings if test behavior changed
+- [ ] **Comments explain WHY test changed** (API misunderstood, behavior changed, etc.)
 
 ## Common Pitfalls
 
