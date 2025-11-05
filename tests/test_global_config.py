@@ -1,5 +1,4 @@
-# tests/test_global_config.py
-# Tests for global configuration module.
+"""Tests for global configuration module."""
 
 import importlib
 import warnings
@@ -39,8 +38,8 @@ def test_database_paths_for_valid_environments(monkeypatch, env):
     importlib.reload(gc)
 
     assert gc.DB_PATHS[env] == Path("db") / f"manchego_{env}.db"
-    assert gc.DATABASE_PATH == gc.DB_PATHS[env]
-    assert gc.MANCHEGO_ENV == env
+    assert gc.DB_PATHS[env] == gc.DATABASE_PATH
+    assert env == gc.MANCHEGO_ENV
 
 
 @pytest.mark.parametrize("env", ["dev", "stage", "prod"], ids=["dev", "stage", "prod"])
@@ -50,13 +49,13 @@ def test_snapshot_directories_for_environments(monkeypatch, env):
     importlib.reload(gc)
 
     assert gc.DB_SNAPSHOT_DIRS[env] == Path("db") / "snapshots" / env
-    assert gc.DB_SNAPSHOT_DIR == gc.DB_SNAPSHOT_DIRS[env]
+    assert gc.DB_SNAPSHOT_DIRS[env] == gc.DB_SNAPSHOT_DIR
 
 
 def test_invalid_environment_defaults_to_dev(monkeypatch):
     """Verify invalid environment defaults to dev with warning."""
     monkeypatch.setenv("MANCHEGO_ENV", "invalid_env")
-    
+
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         importlib.reload(gc)
@@ -64,7 +63,7 @@ def test_invalid_environment_defaults_to_dev(monkeypatch):
         assert "Invalid MANCHEGO_ENV" in str(w[0].message)
 
     assert gc.MANCHEGO_ENV == "dev"
-    assert gc.DATABASE_PATH == gc.DB_PATHS["dev"]
+    assert gc.DB_PATHS["dev"] == gc.DATABASE_PATH
 
 
 def test_api_keys_read_from_environment(monkeypatch):
@@ -80,7 +79,7 @@ def test_api_keys_read_from_environment(monkeypatch):
 def test_missing_openai_api_key_warns(monkeypatch):
     """Verify warning is emitted when OPENAI_API_KEY is not set."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    
+
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         importlib.reload(gc)
@@ -91,7 +90,7 @@ def test_missing_openai_api_key_warns(monkeypatch):
 def test_missing_google_credentials_path_warns(monkeypatch):
     """Verify warning is emitted when GOOGLE_CREDENTIALS_PATH is not set."""
     monkeypatch.delenv("GOOGLE_CREDENTIALS_PATH", raising=False)
-    
+
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         importlib.reload(gc)
@@ -145,4 +144,3 @@ def test_get_log_path__filename_extraction():
     result = gc.get_log_path("receipts.preprocess.transform")
     # Filename should be "transform.log" (last part)
     assert result.name == "transform.log"
-

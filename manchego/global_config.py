@@ -90,7 +90,7 @@ def get_log_path(module_name: str) -> Path:
         module_name: Module name (e.g., 'receipts.preprocess' or 'receipts').
 
     Returns:
-        Path to log file: data/logs/{domain}/{file}.log
+        Path: Path to log file at data/logs/{domain}/{file}.log
     """
     # Split module name (e.g., 'receipts.preprocess' -> ['receipts', 'preprocess'])
     parts = module_name.split(".")

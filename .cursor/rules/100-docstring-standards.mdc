@@ -15,7 +15,25 @@ Use **Google-style docstrings** for all Python code. Keep documentation direct, 
 - Skip examples unless truly useful
 - Write for future maintainer reading the code
 
-## Private Functions and Methodsw
+### Type Consistency
+
+- Docstring types must match type hints exactly
+- Use same syntax in both (e.g., `dict[str, Any]`, `list[Path]`, `int | None`)
+- Type hints are the source of truth; docstrings describe them
+- When documenting complex types, include type information in Returns section
+
+## Documenting Return Structures
+
+For functions returning dicts (especially those following **Rule 605: Business Return Structures**), document the dict structure explicitly in the Returns section:
+
+- List all keys and their types
+- Describe what each key represents
+- Include optional keys with "(optional)" note
+- Critical for machine consumption (AI/LLM parsing) and testing
+
+**See Also:** Rule 605: Business Return Structures (defines what to return)
+
+## Private Functions and Methods
 
 - Use short 1-2 line docstrings summarizing purpose, inputs, and outputs
 - Format: Single line description (no Args/Returns sections needed)
@@ -116,4 +134,53 @@ class Receipt:
     def __init__(self, vendor: str, total: float) -> None:
         self.vendor = vendor
         self.total = total
+```
+
+❌ **Avoid - Undocumented return structure:**
+```python
+def process_files(limit: int | None = None) -> dict:
+    """Process files from input directory."""
+    # Return dict structure not documented
+    return {"success": True, "total": 5, "succeeded": 4, "failed": 1}
+```
+
+✅ **Prefer - Documented return structure (Rule 605 pattern):**
+```python
+def process_files(limit: int | None = None) -> dict:
+    """Process files from input directory.
+    
+    Args:
+        limit: Maximum number of files to process (None = all).
+    
+    Returns:
+        dict: Operation results with:
+            - success (bool): Overall success (all items succeeded).
+            - total (int): Total items processed.
+            - succeeded (int): Successfully processed items.
+            - failed (int): Failed items.
+            - failures (list[dict]): List of failure details, each with:
+                - item (str): Name of failed item.
+                - reason (str): Failure reason.
+            - elapsed_s (float, optional): Time taken in seconds.
+    """
+```
+
+❌ **Avoid - Type mismatch between docstring and type hint:**
+```python
+def get_paths() -> list[Path]:
+    """Get list of file paths.
+    
+    Returns:
+        List[str]: List of file paths.
+    """
+```
+
+✅ **Prefer - Matching types:**
+```python
+def get_paths() -> list[Path]:
+    """Get list of file paths.
+    
+    Returns:
+        list[Path]: List of file paths.
+    """
 ```

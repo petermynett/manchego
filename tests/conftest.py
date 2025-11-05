@@ -17,7 +17,7 @@ def touch(tmp_path: Path):
         tmp_path: Pytest temporary directory fixture.
 
     Returns:
-        Function that creates files: touch(path, content=b"test") -> Path
+        Callable[[Path, bytes], Path]: Function that creates files at given path.
     """
 
     def _touch(p: Path, content: bytes = b"test") -> Path:
@@ -46,7 +46,7 @@ def make_files(tmp_path: Path):
         tmp_path: Pytest temporary directory fixture.
 
     Returns:
-        Function that creates multiple files: make_files(names: list[str]) -> list[Path]
+        Callable[[list[str]], list[Path]]: Function that creates multiple files.
     """
 
     def _make_files(names: list[str]) -> list[Path]:
