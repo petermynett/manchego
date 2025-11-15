@@ -2,11 +2,16 @@
 
 import typer
 
+from manchego.transactions.cli import transactions_app
+
 app = typer.Typer(
     help="Data management system to help track my time and money",
     add_completion=False,
     no_args_is_help=True,
 )
+
+# Register subcommands
+app.add_typer(transactions_app, name="transactions")
 
 
 @app.callback(invoke_without_command=True)

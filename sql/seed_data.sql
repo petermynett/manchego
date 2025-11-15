@@ -57,9 +57,9 @@ INSERT OR IGNORE INTO vendor_categories (label, description) VALUES
 -- ────────────────────────────────────────────────────────────────────────
 -- ACCOUNTS
 -- ────────────────────────────────────────────────────────────────────────
-INSERT OR IGNORE INTO accounts (id, account_type_label, institution, account_name, is_active) VALUES
-    ('account-checking-uuid', 'Checking', 'CIBC', 'Checking', TRUE),
-    ('account-savings-uuid', 'Savings', 'CIBC', 'Savings', TRUE),
-    ('account-personal-visa-uuid', 'Credit Card', 'CIBC', 'Personal Visa', TRUE),
-    ('account-business-visa-uuid', 'Credit Card', 'CIBC', 'Business Visa', TRUE),
-    ('account-cash-uuid', 'Cash', 'CIBC', 'Cash', TRUE);
+INSERT OR IGNORE INTO accounts (id, account_type_label, institution, account_name, account_number, is_active, currency) VALUES
+    ('account-checking-uuid', 'Checking', 'CIBC', 'Personal Chequing', NULL, TRUE, 'CAD'),
+    ('account-savings-uuid', 'Savings', 'CIBC', 'Business Savings', NULL, TRUE, 'CAD'),
+    ('account-personal-visa-uuid', 'Credit Card', 'CIBC', 'Personal Visa', '9256', TRUE, 'CAD'),
+    ('account-business-visa-uuid', 'Credit Card', 'CIBC', 'Business Visa', '4128', TRUE, 'CAD'),
+    ('account-cash-uuid', 'Cash', 'CIBC', 'Cash', NULL, TRUE, 'CAD');
