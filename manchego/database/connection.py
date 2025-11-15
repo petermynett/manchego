@@ -6,15 +6,15 @@ and foreign key enforcement.
 
 import logging
 import sqlite3
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import ContextManager
 
 import manchego.global_config as g
 
 logger = logging.getLogger(__name__)
 
 
-class DatabaseConnection(ContextManager[sqlite3.Connection]):
+class DatabaseConnection(AbstractContextManager[sqlite3.Connection]):
     """Context manager for SQLite database connections.
 
     Automatically enables foreign keys, handles transactions (commit on success,
@@ -70,4 +70,5 @@ class DatabaseConnection(ContextManager[sqlite3.Connection]):
             logger.error(f"Transaction rolled back due to: {exc_type.__name__}")
 
         self.conn.close()
+        self.conn = None
         logger.debug("Connection closed")

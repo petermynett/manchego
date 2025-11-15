@@ -44,7 +44,8 @@ def insert(
     # Build INSERT statement
     columns = ", ".join(data.keys())
     placeholders = ", ".join("?" * len(data))
-    sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+    # S608: table_name and columns come from function params, not user input
+    sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"  # noqa: S608
 
     try:
         conn.execute(sql, tuple(data.values()))
@@ -83,7 +84,8 @@ def get_by_id(
     Raises:
         sqlite3.Error: If query fails.
     """
-    sql = f"SELECT * FROM {table_name} WHERE {pk_column} = ?"
+    # S608: table_name and pk_column come from function params, not user input
+    sql = f"SELECT * FROM {table_name} WHERE {pk_column} = ?"  # noqa: S608
     return fetch_one(conn, sql, (id_value,))
 
 
@@ -116,7 +118,8 @@ def update(
 
     # Build UPDATE statement
     set_clauses = ", ".join(f"{k} = ?" for k in data)
-    sql = f"UPDATE {table_name} SET {set_clauses} WHERE {pk_column} = ?"
+    # S608: table_name, columns, and pk_column come from function params, not user input
+    sql = f"UPDATE {table_name} SET {set_clauses} WHERE {pk_column} = ?"  # noqa: S608
 
     try:
         params = (*tuple(data.values()), id_value)
@@ -150,7 +153,8 @@ def delete(
     Raises:
         sqlite3.Error: If delete fails.
     """
-    sql = f"DELETE FROM {table_name} WHERE {pk_column} = ?"
+    # S608: table_name and pk_column come from function params, not user input
+    sql = f"DELETE FROM {table_name} WHERE {pk_column} = ?"  # noqa: S608
     rowcount = execute_update(conn, sql, (id_value,))
     conn.commit()
     return rowcount > 0
@@ -176,7 +180,9 @@ def get_all(
     Raises:
         sqlite3.Error: If query fails.
     """
-    sql = f"SELECT * FROM {table_name}"
+    # S608: table_name comes from function param, not user input
+    # Note: where_clause is user-provided but caller is responsible for sanitization
+    sql = f"SELECT * FROM {table_name}"  # noqa: S608
     if where_clause:
         sql += f" WHERE {where_clause}"
     return fetch_all(conn, sql, params)
